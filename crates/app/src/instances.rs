@@ -1,6 +1,6 @@
-use crate::{ACCENT, BORDER, MUTED, PANEL};
+use crate::{ACCENT, BORDER, ERROR, GROUND, MUTED, OK, PANEL, SURFACE, TEXT, TEXT_DIM};
 use cloud9_mc::Instance;
-use eframe::egui::{self, RichText, Stroke};
+use eframe::egui::{self, RichText, Stroke, vec2};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -11,8 +11,35 @@ struct Card {
     title: String,
     path: PathBuf,
     profile: String,
-    state: &'static str,
+    state: InstanceState,
     changed: SystemTime,
+}
+
+enum InstanceState {
+    NeedsRepair,
+    SoloSave,
+    BookmarkedServer,
+    SetupPending,
+}
+
+impl InstanceState {
+    fn label(&self) -> &'static str {
+        match self {
+            InstanceState::NeedsRepair => "Needs repair",
+            InstanceState::SoloSave => "Solo save",
+            InstanceState::BookmarkedServer => "Bookmarked server",
+            InstanceState::SetupPending => "Setup pending",
+        }
+    }
+
+    fn color(&self) -> egui::Color32 {
+        match self {
+            InstanceState::NeedsRepair => ERROR,
+            InstanceState::SoloSave => OK,
+            InstanceState::BookmarkedServer => ACCENT,
+            InstanceState::SetupPending => MUTED,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -41,46 +68,75 @@ impl Instances {
         {
             self.reload();
         }
+
         ui.horizontal(|ui| {
-            ui.heading(RichText::new("Instances").size(31.0));
-            if ui.button("Reload").clicked() {
-                self.reload();
-            }
+            ui.heading(RichText::new("Instances").size(32.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Reload").clicked() {
+                    self.reload();
+                }
+            });
         });
-        ui.add_space(8.0);
+        ui.add_space(10.0);
+
         if let Some(error) = &self.error {
-            ui.colored_label(crate::ERROR, error);
+            ui.colored_label(ERROR, error);
             return None;
         }
+
         if self.cards.is_empty() {
             ui.colored_label(
                 MUTED,
-                "Choose an episode and launch it to create a saved instance.",
+                "No saved instances yet. Choose an episode and launch it to create one.",
             );
+            return None;
         }
+
         let mut selection = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
             for card in &self.cards {
                 egui::Frame::new()
-                    .fill(PANEL)
+                    .fill(SURFACE)
                     .stroke(Stroke::new(1.0_f32, BORDER))
-                    .corner_radius(2)
-                    .inner_margin(12)
+                    .corner_radius(crate::CARD_RADIUS)
+                    .inner_margin(egui::Margin::same(14.0))
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
+                        ui.spacing_mut().item_spacing = vec2(10.0, 8.0);
+
                         ui.horizontal(|ui| {
                             ui.vertical(|ui| {
-                                ui.label(RichText::new(&card.title).size(18.0));
-                                ui.label(RichText::new(&card.profile).monospace().color(MUTED));
-                                ui.colored_label(ACCENT, card.state);
+                                ui.label(RichText::new(&card.title).size(17.0).strong());
+                                ui.add_space(2.0);
+                                ui.label(
+                                    RichText::new(&card.profile)
+                                        .monospace()
+                                        .color(TEXT_DIM)
+                                        .small(),
+                                );
                             });
-                            if ui.button("Open").clicked() {
-                                selection = Some(card.path.clone());
-                            }
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui
+                                    .button(
+                                        RichText::new("Open")
+                                            .small()
+                                            .strong()
+                                            .color(GROUND),
+                                    )
+                                    .fill(ACCENT)
+                                    .clicked()
+                                {
+                                    selection = Some(card.path.clone());
+                                }
+                                ui.add_space(8.0);
+                                ui.colored_label(card.state.color(), card.state.label());
+                            });
                         });
                     });
+                ui.add_space(10.0);
             }
         });
+
         selection
     }
 }
@@ -111,14 +167,15 @@ fn scan(root: &Path) -> std::io::Result<Vec<Card>> {
             .map(str::to_owned)
             .unwrap_or_else(|| entry.file_name().to_string_lossy().into_owned());
         let lock = Instance::inspect(&path);
-        let state = if lock.is_err() || document.is_none() {
-            "Needs repair"
+        let document_is_some = document.is_some();
+        let state = if lock.is_err() || !document_is_some {
+            InstanceState::NeedsRepair
         } else if path.join("round-snapshot/level.dat").is_file() {
-            "Solo save"
+            InstanceState::SoloSave
         } else if path.join("servers.dat").is_file() {
-            "Bookmarked server"
+            InstanceState::BookmarkedServer
         } else {
-            "Setup pending"
+            InstanceState::SetupPending
         };
         let profile = lock.map_or_else(
             |_| "Instance lock unreadable".into(),
@@ -170,7 +227,7 @@ mod tests {
         let cards = scan(root.path())?;
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].title, "Round");
-        assert_eq!(cards[0].state, "Needs repair");
+        assert_eq!(cards[0].state, InstanceState::NeedsRepair);
         Ok(())
     }
 }

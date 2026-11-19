@@ -15,20 +15,21 @@ use std::{
 };
 
 // Design tokens — one place to tune the look and feel.
-const GROUND: Color32 = Color32::from_rgb(24, 22, 16);
-const PANEL: Color32 = Color32::from_rgb(33, 30, 22);
-const SURFACE: Color32 = Color32::from_rgb(41, 37, 28);
-const TEXT: Color32 = Color32::from_rgb(230, 224, 204);
-const TEXT_DIM: Color32 = Color32::from_rgb(184, 176, 152);
-const MUTED: Color32 = Color32::from_rgb(148, 140, 110);
-const ACCENT: Color32 = Color32::from_rgb(210, 162, 48);
-const ACCENT_FAINT: Color32 = Color32::from_rgb(74, 56, 14);
-const OK: Color32 = Color32::from_rgb(143, 192, 122);
-const ERROR: Color32 = Color32::from_rgb(230, 110, 90);
-const BORDER: Color32 = Color32::from_rgb(60, 55, 40);
+// Made pub(crate) so the other UI modules can share the same palette.
+pub(crate) const GROUND: Color32 = Color32::from_rgb(24, 22, 16);
+pub(crate) const PANEL: Color32 = Color32::from_rgb(33, 30, 22);
+pub(crate) const SURFACE: Color32 = Color32::from_rgb(41, 37, 28);
+pub(crate) const TEXT: Color32 = Color32::from_rgb(230, 224, 204);
+pub(crate) const TEXT_DIM: Color32 = Color32::from_rgb(184, 176, 152);
+pub(crate) const MUTED: Color32 = Color32::from_rgb(148, 140, 110);
+pub(crate) const ACCENT: Color32 = Color32::from_rgb(210, 162, 48);
+pub(crate) const ACCENT_FAINT: Color32 = Color32::from_rgb(74, 56, 14);
+pub(crate) const OK: Color32 = Color32::from_rgb(143, 192, 122);
+pub(crate) const ERROR: Color32 = Color32::from_rgb(230, 110, 90);
+pub(crate) const BORDER: Color32 = Color32::from_rgb(60, 55, 40);
 
-const CARD_RADIUS: f32 = 6.0;
-const PANEL_RADIUS: f32 = 8.0;
+pub(crate) const CARD_RADIUS: f32 = 6.0;
+pub(crate) const PANEL_RADIUS: f32 = 8.0;
 
 fn main() -> eframe::Result {
     let mut args = std::env::args_os().skip(1);
@@ -384,6 +385,10 @@ impl eframe::App for Browser {
             self.check_catalog(ctx);
         }
         self.thumbs.update(ctx);
+        // Keep repainting while thumbnails load so the loading-dots animation runs.
+        if !self.thumbs.pending.is_empty() {
+            ctx.request_repaint();
+        }
         if self.runner.poll(ctx) {
             self.screen = Screen::Running;
             self.play_dialog = false;

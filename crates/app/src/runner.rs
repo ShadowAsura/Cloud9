@@ -1,11 +1,15 @@
-use crate::{ACCENT, ERROR, GROUND, MUTED, OK, TEXT};
+use crate::{
+    ACCENT, BORDER, ERROR, GROUND, MUTED, OK, PANEL, SURFACE, TEXT, TEXT_DIM,
+};
 use cloud9_core::Document;
 use cloud9_mc::{
     Account, ClientRuntime, Installer, Instance, Level, LogEvent, MicrosoftSignIn, Profile,
     bootstrap_client_registry, create_instance, create_instance_with_helper, download_pinned_mods,
     has_mod_downloads, resolve_mods,
 };
-use eframe::egui::{self, Frame, RichText};
+use eframe::egui::{
+    self, CollapsingHeader, Frame, RichText, Stroke, vec2,
+};
 use std::{
     collections::VecDeque,
     fs::OpenOptions,
@@ -405,12 +409,39 @@ impl Runner {
         });
     }
 
+    /// A form row: label on the left, editable value on the right.
+    fn form_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        label: &str,
+        value: &mut String,
+        hint: Option<&str>,
+        focus: bool,
+    ) -> egui::Response {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(label).color(TEXT_DIM).small());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let mut edit = egui::TextEdit::singleline(value);
+                if let Some(h) = hint {
+                    edit = edit.hint_text(h);
+                }
+                let response = ui.add(edit);
+                if focus {
+                    response.request_focus();
+                }
+                response
+            })
+            .inner
+        })
+        .inner
+    }
+
     pub fn plan(&mut self, ui: &mut egui::Ui) {
         ui.add_space(8.0);
         if let Some(document) = &self.selected {
             let episode = document.manifest();
-            let challenge = &document.source()["map"]["overrides"]["challenge"]["kind"];
-            ui.label(RichText::new(&episode.episode.title).size(20.0));
+            ui.heading(RichText::new(&episode.episode.title).size(22.0));
+            ui.add_space(2.0);
             ui.colored_label(
                 MUTED,
                 format!(
@@ -430,38 +461,55 @@ impl Runner {
                         .map_or_else(|| "pending review".to_owned(), |major| major.to_string())
                 ),
             );
-            let downloadable = has_mod_downloads(episode);
-            let map = match episode.map.template_id.as_str() {
-                "challenge_games" => "Cloud 9 Arena",
-                "lucky_block_bedwars" => "Cloud 9 Islands",
-                name => name,
-            };
+            ui.add_space(10.0);
+
+            // Map info.
             ui.horizontal(|ui| {
-                ui.colored_label(MUTED, "Map");
-                ui.label(map);
+                ui.label(RichText::new("Map").color(TEXT_DIM).small());
+                let map = match episode.map.template_id.as_str() {
+                    "challenge_games" => "Cloud 9 Arena",
+                    "lucky_block_bedwars" => "Cloud 9 Islands",
+                    name => name,
+                };
+                ui.label(RichText::new(map).strong());
             });
+            ui.add_space(8.0);
+
+            // Mods list.
             for jar in &episode.mods {
                 ui.horizontal(|ui| {
-                    ui.label(&jar.display_name.value);
-                    if let Some(source) = jar.file_hint.as_ref().and_then(|hint| hint.url.as_ref())
-                    {
+                    ui.label(RichText::new(&jar.display_name.value).small());
+                    if let Some(source) = jar.file_hint.as_ref().and_then(|hint| hint.url.as_ref()) {
                         ui.hyperlink_to("Source", source);
                     }
                 });
             }
-            if challenge == "chicken_jockey" {
+            if episode.mods.is_empty() {
+                ui.colored_label(MUTED, "No pinned mods.");
+            }
+
+            if episode.source()["map"]["overrides"]["challenge"]["kind"] == "chicken_jockey" {
+                ui.add_space(6.0);
                 ui.colored_label(ACCENT, "Community round");
                 ui.label("Open Lucky Blocks, trade with the Arena Trader, then right-click the gold block to fight.");
             }
+
+            ui.add_space(10.0);
+
+            // Download pinned mods.
             if self.saved.is_none()
-                && downloadable
+                && has_mod_downloads(episode)
                 && ui
                     .add_enabled(!self.pending, egui::Button::new("Download pinned mods"))
                     .clicked()
             {
                 self.download_mods();
             }
+
             ui.separator();
+            ui.add_space(4.0);
+
+            // Server / sign-in status.
             let saved_server = self.saved.as_ref().is_some_and(|path| {
                 path.join("servers.dat").is_file() && !path.join("round-snapshot").is_dir()
             });
@@ -473,6 +521,7 @@ impl Runner {
                     "Open Multiplayer to connect to the bookmarked server.",
                 );
             }
+
             let can_use_dev = self.matchup.is_none() && !saved_server;
             if self.dev {
                 ui.colored_label(ACCENT, "Offline development session for local testing.");
@@ -493,8 +542,10 @@ impl Runner {
                 self.sign_in();
             }
             if let Some((url, code)) = &self.verification {
+                ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.hyperlink_to("Open Microsoft sign-in", url);
+                    ui.add_space(8.0);
                     if ui.button(format!("Copy code {code}")).clicked() {
                         ui.ctx().copy_text(code.clone());
                     }
@@ -503,19 +554,27 @@ impl Runner {
                     }
                 });
             }
+
+            ui.add_space(10.0);
             ui.separator();
+            ui.add_space(4.0);
+
+            // Advanced settings.
             let focus_advanced = matches!(
                 self.action_focus,
                 Some("Locate jar" | "Fetch" | "Locate Java" | "Increase RAM")
             );
-            egui::CollapsingHeader::new("Advanced settings")
+            CollapsingHeader::new("Advanced settings")
                 .open(focus_advanced.then_some(true))
                 .show(ui, |ui| {
                     if can_use_dev {
+                        ui.add_space(2.0);
                         ui.checkbox(&mut self.dev, "Local development profile");
+                        ui.add_space(4.0);
                     }
                     if let Some(path) = &self.saved {
-                        ui.label(format!("Instance folder {} ", path.display()));
+                        ui.label(RichText::new("Instance folder").color(TEXT_DIM).small());
+                        ui.label(format!("{}", path.display()));
                         if let Some(instance) = &self.saved_lock {
                             ui.colored_label(
                                 MUTED,
@@ -525,98 +584,93 @@ impl Runner {
                                 ui.monospace(format!("{} {}", locked.mod_id, locked.version));
                             }
                         }
+                        ui.add_space(4.0);
                     }
                     ui.add_enabled_ui(self.saved.is_none(), |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label("Local mod directory");
-                            let input = ui.text_edit_singleline(&mut self.supplied);
-                            if matches!(self.action_focus, Some("Locate jar" | "Fetch")) {
-                                input.request_focus();
-                                self.action_focus = None;
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Java executable");
-                            let input = ui.add(
-                                egui::TextEdit::singleline(&mut self.java).hint_text("Auto-detect"),
-                            );
-                            if self.action_focus == Some("Locate Java") {
-                                input.request_focus();
-                                self.action_focus = None;
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Runner helper JAR");
-                            ui.text_edit_singleline(&mut self.helper);
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Templates");
-                            ui.text_edit_singleline(&mut self.template_root);
-                        });
+                        self.form_row(ui, "Local mod directory", &mut self.supplied, None,
+                            matches!(self.action_focus, Some("Locate jar" | "Fetch")));
+                        ui.add_space(4.0);
+                        self.form_row(ui, "Java executable", &mut self.java, Some("Auto-detect"),
+                            self.action_focus == Some("Locate Java"));
+                        ui.add_space(4.0);
+                        self.form_row(ui, "Runner helper JAR", &mut self.helper, None, false);
+                        ui.add_space(4.0);
+                        self.form_row(ui, "Templates", &mut self.template_root, None, false);
                     });
-                    let ram = ui.add(
-                        egui::Slider::new(&mut self.ram, 1024..=16384)
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("RAM").color(TEXT_DIM).small());
+                        let slider = egui::Slider::new(&mut self.ram, 1024..=16384)
                             .step_by(256.0)
-                            .suffix(" MiB")
-                            .text("RAM"),
-                    );
-                    if self.action_focus == Some("Increase RAM") {
-                        ram.request_focus();
-                        self.action_focus = None;
-                    }
+                            .suffix(" MiB");
+                        let response = ui.add(slider);
+                        if self.action_focus == Some("Increase RAM") {
+                            response.request_focus();
+                            self.action_focus = None;
+                        }
+                    });
                 });
-            ui.add_space(6.0);
-            if ui
-                .add_enabled(
-                    !self.pending && self.process.is_none() && (self.dev || self.account.is_some()),
-                    egui::Button::new(
-                        RichText::new(if self.matchup.is_some() {
-                            "Join server"
-                        } else if self.saved.is_some() {
-                            "Resume"
-                        } else {
-                            "Play"
-                        })
-                        .strong()
-                        .color(GROUND),
-                    )
-                    .fill(ACCENT),
-                )
-                .clicked()
-            {
-                self.launch(false);
-            }
-            if self
-                .saved
-                .as_ref()
-                .is_some_and(|path| path.join("round-snapshot").is_dir())
-                && ui
+
+            ui.add_space(10.0);
+
+            // Primary action buttons.
+            let can_launch = !self.pending && self.process.is_none() && (self.dev || self.account.is_some());
+            ui.horizontal(|ui| {
+                if ui
                     .add_enabled(
-                        !self.pending
-                            && self.process.is_none()
-                            && (self.dev || self.account.is_some()),
-                        egui::Button::new("Start fresh round"),
+                        can_launch,
+                        egui::Button::new(
+                            RichText::new(if self.matchup.is_some() {
+                                "Join server"
+                            } else if self.saved.is_some() {
+                                "Resume"
+                            } else {
+                                "Play"
+                            })
+                            .strong()
+                            .color(GROUND),
                     )
+                    .fill(ACCENT)
                     .clicked()
+                {
+                    self.launch(false);
+                }
+                if self
+                    .saved
+                    .as_ref()
+                    .is_some_and(|path| path.join("round-snapshot").is_dir())
+                    && ui
+                        .add_enabled(
+                            can_launch,
+                            egui::Button::new("Start fresh round"),
+                        )
+                        .clicked()
+                {
+                    self.launch(true);
+                }
+            });
+
+            // Error recovery actions.
+            if self.error && self.status.starts_with("Locate jar")
+                && ui.button("Locate jar").clicked()
             {
-                self.launch(true);
+                self.action_focus = Some("Locate jar");
             }
+            if self.error && self.status.starts_with("Edit alias") {
+                ui.label("Edit aliases/<mod_id>/<version>.json, then retry.");
+            }
+            self.status(ui);
         } else {
             ui.colored_label(MUTED, "Choose an episode in the browser.");
         }
-        if self.error && self.status.starts_with("Locate jar") && ui.button("Locate jar").clicked()
-        {
-            self.action_focus = Some("Locate jar");
-        }
-        if self.error && self.status.starts_with("Edit alias") {
-            ui.label("Edit aliases/<mod_id>/<version>.json, then retry.");
-        }
-        self.status(ui);
     }
 
     pub fn running(&mut self, ui: &mut egui::Ui) -> bool {
-        ui.heading(RichText::new("Running").size(31.0));
+        ui.heading(RichText::new("Running").size(32.0));
+        ui.add_space(6.0);
         self.status(ui);
+        ui.add_space(8.0);
+
         if let Some(path) = self.previous.clone()
             && ui
                 .add_enabled(
@@ -647,68 +701,79 @@ impl Runner {
                 }
             }
         }
+
+        ui.add_space(10.0);
         if self.events.is_empty() {
             ui.colored_label(MUTED, "Minecraft output will appear here.");
-        }
-        let mut open_plan = false;
-        let diagnostic = self
-            .events
-            .iter()
-            .rev()
-            .find_map(|event| event.diagnostic)
-            .filter(|diagnostic| Some(diagnostic.message) != self.ignored_message);
-        if let Some(diagnostic) = diagnostic {
-            ui.colored_label(ACCENT, diagnostic.message);
-            ui.horizontal_wrapped(|ui| {
-                for action in diagnostic.actions {
-                    if ui.button(*action).clicked() {
-                        if *action == "Ignore" {
-                            self.ignored_message = Some(diagnostic.message);
-                        } else {
-                            self.action_focus = Some(action);
-                            open_plan = true;
-                            if *action == "Edit alias" {
-                                self.status = "Edit alias: update aliases/<mod_id>/<version>.json, then retry.".into();
-                                self.error = true;
+        } else {
+            let diagnostic = self
+                .events
+                .iter()
+                .rev()
+                .find_map(|event| event.diagnostic)
+                .filter(|diagnostic| Some(diagnostic.message) != self.ignored_message);
+            if let Some(diagnostic) = diagnostic {
+                ui.colored_label(ACCENT, diagnostic.message);
+                ui.horizontal_wrapped(|ui| {
+                    for action in diagnostic.actions {
+                        if ui.button(*action).clicked() {
+                            if *action == "Ignore" {
+                                self.ignored_message = Some(diagnostic.message);
+                            } else {
+                                self.action_focus = Some(action);
+                                if *action == "Edit alias" {
+                                    self.status = "Edit alias: update aliases/<mod_id>/<version>.json, then retry.".into();
+                                    self.error = true;
+                                }
+                                if *action == "Fetch" {
+                                    self.status = "Use the mod source links and place the matching jars in the local mod directory.".into();
+                                    self.error = false;
+                                }
                             }
-                            if *action == "Fetch" {
-                                self.status = "Use the mod source links and place the matching jars in the local mod directory.".into();
-                                self.error = false;
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        egui::ScrollArea::vertical()
-            .stick_to_bottom(true)
-            .show(ui, |ui| {
-                Frame::new().fill(GROUND).inner_margin(6).show(ui, |ui| {
-                    for event in &self.events {
-                        let (label, color) = match event.level {
-                            Level::Info => ("Info", TEXT),
-                            Level::Warn => ("Warning", ACCENT),
-                            Level::Error => ("Error", ERROR),
-                        };
-                        ui.label(
-                            RichText::new(format!("[{label}] {}", event.line))
-                                .monospace()
-                                .color(color),
-                        );
-                        if let Some(diagnostic) = event.diagnostic {
-                            ui.colored_label(
-                                color,
-                                format!(
-                                    "{} · {}",
-                                    diagnostic.message,
-                                    diagnostic.actions.join(" / ")
-                                ),
-                            );
                         }
                     }
                 });
-            });
-        open_plan
+                ui.add_space(6.0);
+            }
+
+            egui::ScrollArea::vertical()
+                .stick_to_bottom(true)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    Frame::new()
+                        .fill(GROUND)
+                        .stroke(Stroke::new(1.0_f32, BORDER))
+                        .corner_radius(crate::CARD_RADIUS)
+                        .inner_margin(egui::Margin::same(10.0))
+                        .show(ui, |ui| {
+                            for event in &self.events {
+                                let (label, color) = match event.level {
+                                    Level::Info => ("Info", TEXT),
+                                    Level::Warn => ("Warning", ACCENT),
+                                    Level::Error => ("Error", ERROR),
+                                };
+                                ui.label(
+                                    RichText::new(format!("[{label}] {}", event.line))
+                                        .monospace()
+                                        .size(12.0)
+                                        .color(color),
+                                );
+                                if let Some(diagnostic) = &event.diagnostic {
+                                    ui.colored_label(
+                                        color,
+                                        format!(
+                                            "{} · {}",
+                                            diagnostic.message,
+                                            diagnostic.actions.join(" / ")
+                                        ),
+                                    );
+                                }
+                            }
+                        });
+                });
+        }
+
+        false
     }
 
     fn status(&self, ui: &mut egui::Ui) {
