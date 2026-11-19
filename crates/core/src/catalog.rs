@@ -32,6 +32,19 @@ impl Catalog {
         Ok(Self(connection))
     }
 
+    pub fn document(&self, video_id: &str) -> Result<crate::Document, String> {
+        let json: String = self
+            .0
+            .query_row(
+                "SELECT manifest_json FROM episodes WHERE video_id = ?1",
+                [video_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        let value = serde_json::from_str(&json).map_err(|error| error.to_string())?;
+        crate::Document::from_value(value).map_err(|error| error.to_string())
+    }
+
     /// Query one bounded page. The extra row tells the browser whether to
     /// enable forward navigation without running a separate count every time.
     pub fn page(

@@ -27,3 +27,11 @@ Review changes belong in `overrides/VIDEO_ID.json`. The scraper reapplies them o
 ## M3 · Desktop episode browser
 
 After seeding or scraping the index, run `cargo run -p cloud9-app`. Pass a custom SQLite path after `--` if required. The browser queries one page at a time and loads local thumbnails for visible cards on a background thread. The desktop fonts are distributed under the SIL Open Font License. [IBM Plex](https://github.com/IBM/plex)
+
+## M4 · Minecraft runtime
+
+Choose **Run plan** on an episode card, point it at your local mod directory, and select a Java 8 executable or set `JAVA8_HOME`. The launcher downloads hashed Minecraft and Forge artifacts to the ignored cache and copies verified user-supplied mods into a fresh instance. If the Forge version JSON exists without its JAR, preparation repairs the installation.
+
+For Microsoft sign-in, supply an authorized public-client ID when prompted or set `CLOUD9_MICROSOFT_CLIENT_ID`. Cloud 9 keeps game credentials in memory. Local development mode is an explicit setting for local testing. Minecraft output and diagnostics appear under **Running**. [Microsoft device sign-in](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)
+
+The opt-in runtime smoke test requires a desktop, an internet connection, and `CLOUD9_SMOKE_JAVA` pointing to Java 8. Run `cargo test -p cloud9-mc --test live_client -- --ignored`.

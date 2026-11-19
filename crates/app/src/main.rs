@@ -1,3 +1,5 @@
+mod runner;
+
 use cloud9_core::catalog::{Catalog, EpisodeCard, Filters};
 use eframe::egui::{
     self, Color32, ColorImage, CornerRadius, FontData, FontFamily, FontId, Frame, RichText, Stroke,
@@ -189,7 +191,16 @@ fn decode_thumbnail(path: &Path) -> Option<ColorImage> {
     ))
 }
 
+#[derive(PartialEq, Eq)]
+enum Screen {
+    Episodes,
+    RunPlan,
+    Running,
+}
+
 struct Browser {
+    screen: Screen,
+    runner: runner::Runner,
     path: PathBuf,
     catalog: Option<Catalog>,
     filters: Filters,
@@ -204,6 +215,8 @@ struct Browser {
 impl Browser {
     fn new(path: PathBuf, ctx: egui::Context) -> Self {
         let mut browser = Self {
+            screen: Screen::Episodes,
+            runner: runner::Runner::new(),
             path,
             catalog: None,
             filters: Filters::default(),
@@ -249,6 +262,7 @@ impl Browser {
 impl eframe::App for Browser {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         self.thumbs.update(ctx);
+        self.runner.poll(ctx);
         egui::TopBottomPanel::top("header")
             .frame(
                 Frame::new()
@@ -266,12 +280,29 @@ impl eframe::App for Browser {
                             .size(19.0),
                     );
                     ui.separator();
-                    ui.label(RichText::new("Episode browser").size(15.0).color(MUTED));
+                    for (screen, label) in [
+                        (Screen::Episodes, "Episodes"),
+                        (Screen::RunPlan, "Run plan"),
+                        (Screen::Running, "Running"),
+                    ] {
+                        ui.selectable_value(&mut self.screen, screen, label);
+                    }
                 });
             });
         egui::CentralPanel::default()
             .frame(Frame::new().fill(GROUND).inner_margin(24))
             .show(ctx, |ui| {
+                match self.screen {
+                    Screen::RunPlan => {
+                        self.runner.plan(ui);
+                        return;
+                    }
+                    Screen::Running => {
+                        self.runner.running(ui);
+                        return;
+                    }
+                    Screen::Episodes => {}
+                }
                 ui.horizontal(|ui| {
                     ui.heading(RichText::new("Episodes").size(31.0));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -364,7 +395,16 @@ impl eframe::App for Browser {
                 }
                 scroll.show_rows(ui, 108.0, self.cards.len(), |ui, rows| {
                     for index in rows {
-                        render_card(ui, &self.cards[index], &mut self.thumbs);
+                        let card = &self.cards[index];
+                        if render_card(ui, card, &mut self.thumbs) {
+                            let result = self
+                                .catalog
+                                .as_ref()
+                                .ok_or_else(|| "Catalog unavailable".into())
+                                .and_then(|catalog| catalog.document(&card.video_id));
+                            self.runner.select(result);
+                            self.screen = Screen::RunPlan;
+                        }
                     }
                 });
             });
@@ -380,7 +420,8 @@ fn mode_label(mode: &str) -> &str {
     }
 }
 
-fn render_card(ui: &mut egui::Ui, card: &EpisodeCard, thumbnails: &mut Thumbnails) {
+fn render_card(ui: &mut egui::Ui, card: &EpisodeCard, thumbnails: &mut Thumbnails) -> bool {
+    let mut selected = false;
     Frame::new()
         .fill(PANEL)
         .stroke(Stroke::new(1.0_f32, BORDER))
@@ -426,9 +467,11 @@ fn render_card(ui: &mut egui::Ui, card: &EpisodeCard, thumbnails: &mut Thumbnail
                                 .truncate(),
                             );
                         }
-                        ui.hyperlink_to("Episode source", &card.url);
+                        ui.hyperlink_to("Source", &card.url);
+                        selected = ui.small_button("Run plan").clicked();
                     });
                 });
             });
         });
+    selected
 }
