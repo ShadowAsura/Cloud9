@@ -726,7 +726,8 @@ fn render_card(
                     },
                 );
                 opened || button_clicked
-            });
+            })
+            .inner
         })
         .inner
 }
