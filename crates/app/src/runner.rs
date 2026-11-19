@@ -705,6 +705,10 @@ impl Runner {
         ui.add_space(10.0);
         if self.events.is_empty() {
             ui.colored_label(MUTED, "Minecraft output will appear here.");
+            ui.colored_label(
+                MUTED,
+                "Launch from Instances (Open) or Episodes (Play or Details).",
+            );
         } else {
             let diagnostic = self
                 .events

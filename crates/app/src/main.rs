@@ -16,17 +16,19 @@ use std::{
 
 // Design tokens — one place to tune the look and feel.
 // Made pub(crate) so the other UI modules can share the same palette.
-pub(crate) const GROUND: Color32 = Color32::from_rgb(24, 22, 16);
-pub(crate) const PANEL: Color32 = Color32::from_rgb(33, 30, 22);
-pub(crate) const SURFACE: Color32 = Color32::from_rgb(41, 37, 28);
-pub(crate) const TEXT: Color32 = Color32::from_rgb(230, 224, 204);
-pub(crate) const TEXT_DIM: Color32 = Color32::from_rgb(184, 176, 152);
-pub(crate) const MUTED: Color32 = Color32::from_rgb(148, 140, 110);
-pub(crate) const ACCENT: Color32 = Color32::from_rgb(210, 162, 48);
-pub(crate) const ACCENT_FAINT: Color32 = Color32::from_rgb(74, 56, 14);
+// Dark launcher theme in the spirit of CurseForge Classic: near-black slate,
+ // lifted panels, light text, single orange accent.
+pub(crate) const GROUND: Color32 = Color32::from_rgb(20, 22, 26);
+pub(crate) const PANEL: Color32 = Color32::from_rgb(29, 32, 38);
+pub(crate) const SURFACE: Color32 = Color32::from_rgb(38, 43, 51);
+pub(crate) const TEXT: Color32 = Color32::from_rgb(237, 239, 242);
+pub(crate) const TEXT_DIM: Color32 = Color32::from_rgb(185, 190, 198);
+pub(crate) const MUTED: Color32 = Color32::from_rgb(125, 133, 144);
+pub(crate) const ACCENT: Color32 = Color32::from_rgb(241, 100, 54);
+pub(crate) const ACCENT_FAINT: Color32 = Color32::from_rgb(66, 32, 22);
 pub(crate) const OK: Color32 = Color32::from_rgb(143, 192, 122);
 pub(crate) const ERROR: Color32 = Color32::from_rgb(230, 110, 90);
-pub(crate) const BORDER: Color32 = Color32::from_rgb(60, 55, 40);
+pub(crate) const BORDER: Color32 = Color32::from_rgb(52, 58, 68);
 
 pub(crate) const CARD_RADIUS: f32 = 6.0;
 pub(crate) const PANEL_RADIUS: u8 = 8;
@@ -40,8 +42,8 @@ fn main() -> eframe::Result {
     let episode = args.next().and_then(|id| id.into_string().ok());
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1150.0, 800.0])
-            .with_min_inner_size([800.0, 560.0]),
+            .with_inner_size([1280.0, 800.0])
+            .with_min_inner_size([1024.0, 600.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -410,15 +412,15 @@ impl eframe::App for Browser {
 
         self.dialog_backdrop(ctx);
 
-        egui::TopBottomPanel::top("header")
-            .frame(
-                Frame::new()
-                    .fill(PANEL)
-                    .inner_margin(egui::Margin::symmetric(28, 16))
-                    .stroke(Stroke::new(1.0_f32, BORDER)),
-            )
+        // Left rail navigation, CurseForge-style: brand on top, screens as
+        // full-width rows with a lighter active shade, index actions pinned
+        // at the bottom.
+        egui::SidePanel::left("nav")
+            .exact_width(208.0)
+            .resizable(false)
+            .frame(Frame::new().fill(PANEL).inner_margin(egui::Margin::same(16)))
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
+                ui.vertical(|ui| {
                     ui.label(
                         RichText::new("CLOUD 9")
                             .monospace()
@@ -426,35 +428,43 @@ impl eframe::App for Browser {
                             .color(ACCENT)
                             .size(20.0),
                     );
-                    ui.separator();
-                    ui.spacing_mut().item_spacing = vec2(16.0_f32, 0.0_f32);
+                    ui.add_space(16.0);
                     for (screen, label) in [
                         (Screen::Episodes, "Episodes"),
                         (Screen::Instances, "Instances"),
                         (Screen::Running, "Running"),
                         (Screen::Servers, "Servers"),
                     ] {
-                        let selected = self.screen == screen;
-                        let button = egui::SelectableLabel::new(
-                            selected,
-                            RichText::new(label).color(if selected { TEXT } else { MUTED }),
-                        );
-                        if ui.add(button).clicked() {
+                        if nav_item(ui, self.screen == screen, label) {
                             self.screen = screen;
                         }
+                        ui.add_space(4.0);
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .button(
-                                RichText::new("Reload index")
-                                    .small()
-                                    .color(if self.screen == Screen::Episodes { TEXT } else { MUTED }),
-                            )
-                            .clicked()
-                        {
-                            self.open();
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(12.0);
+                    if ui
+                        .add_sized(
+                            [ui.available_width(), 32.0],
+                            egui::Button::new(RichText::new("Reload index").small()),
+                    )
+                    .clicked()
+                    {
+                        self.open();
+                    }
+                    ui.add_space(8.0);
+                    match &self.error {
+                        Some(error) => {
+                            ui.colored_label(ERROR, RichText::new(error).small());
                         }
-                    });
+                        None => {
+                            let detail = match self.catalog_version {
+                                Some(version) => format!("Index v{version}"),
+                                None => "No index".to_owned(),
+                            };
+                            ui.label(RichText::new(detail).small().color(MUTED));
+                        }
+                    }
                 });
             });
 
@@ -505,7 +515,14 @@ impl eframe::App for Browser {
                 }
 
                 ui.horizontal(|ui| {
-                ui.heading(RichText::new("Episodes").size(34.0));
+                    ui.heading(RichText::new("Episodes").size(30.0));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(format!("{} shown", self.cards.len()))
+                                .small()
+                                .color(MUTED),
+                        );
+                    });
                 });
                 ui.add_space(14.0);
                 let mut changed = ui
@@ -565,10 +582,11 @@ impl eframe::App for Browser {
                 }
 
                 let gap = 16.0;
-                let width = ui.available_width() - 12.0;
+                let width = (ui.available_width() - 64.0).max(200.0);
                 let columns = gallery_columns(width, gap);
-                let card_width = (width - gap * (columns - 1) as f32) / columns as f32;
-                let row_height = card_width * 9.0 / 16.0 + 176.0;
+                let card_width =
+                    ((width - gap * (columns - 1) as f32) / columns as f32).min(480.0);
+                let row_height = card_width * 9.0 / 16.0 + 190.0;
                 let mut selected = None;
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
@@ -626,8 +644,29 @@ fn mode_label(mode: &str) -> &str {
     }
 }
 
+/// Full-width sidebar row with a lighter active shade, CurseForge-style.
+/// Returns true when clicked.
+fn nav_item(ui: &mut egui::Ui, selected: bool, label: &str) -> bool {
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(ui.available_width(), 36.0), egui::Sense::click());
+    if selected {
+        ui.painter().rect_filled(rect, 4.0, ACCENT_FAINT);
+    } else if response.hovered() {
+        ui.painter()
+            .rect_filled(rect, 4.0, Color32::from_white_alpha(8));
+    }
+    ui.painter().text(
+        pos2(rect.min.x + 14.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        FontId::proportional(15.0),
+        if selected { TEXT } else { MUTED },
+    );
+    response.clicked()
+}
+
 fn gallery_columns(width: f32, gap: f32) -> usize {
-    (((width + gap) / (260.0 + gap)).floor() as usize).clamp(1, 4)
+    (((width + gap) / (260.0 + gap)).floor() as usize).clamp(1, 2)
 }
 
 fn render_card(
@@ -641,10 +680,11 @@ fn render_card(
         .stroke(Stroke::new(1.0_f32, BORDER))
         .corner_radius(CARD_RADIUS)
         .show(ui, |ui| {
-            ui.set_width(width);
-            ui.spacing_mut().item_spacing.y = 8.0;
+            ui.vertical(|ui| {
+                ui.set_width(width);
+                ui.spacing_mut().item_spacing.y = 8.0;
 
-            // Thumbnail band — full width of card.
+                // Thumbnail band — full width of card.
             let opened = thumbnails.draw(ui, card, width).clicked();
 
             ui.add_space(8.0);
@@ -712,20 +752,27 @@ fn render_card(
                 ui.add_space(10.0);
 
                 // Action row: primary action left, watch link right.
-                let button_clicked = ui
-                    .small_button(if card.community_setup {
-                        "Play"
-                    } else {
-                        "Details"
+                let action_clicked = ui
+                    .horizontal(|ui| {
+                        let b = ui
+                            .small_button(if card.community_setup {
+                                "Play"
+                            } else {
+                                "Details"
+                            })
+                            .clicked();
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                ui.hyperlink_to("Watch episode", &card.url);
+                            },
+                        );
+                        b
                     })
-                    .clicked();
-                ui.with_layout(
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        ui.hyperlink_to("Watch episode", &card.url);
-                    },
-                );
-                opened || button_clicked
+                    .inner;
+                opened || action_clicked
+                })
+                .inner
             })
             .inner
         })
@@ -740,8 +787,8 @@ mod gallery_tests {
     fn grid_adapts_to_window_width() {
         assert_eq!(gallery_columns(255.0, 16.0), 1);
         assert_eq!(gallery_columns(736.0, 16.0), 2);
-        assert_eq!(gallery_columns(1000.0, 16.0), 3);
-        assert_eq!(gallery_columns(1600.0, 16.0), 4);
+        assert_eq!(gallery_columns(1000.0, 16.0), 2);
+        assert_eq!(gallery_columns(1600.0, 16.0), 2);
     }
 
     #[test]

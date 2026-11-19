@@ -156,6 +156,10 @@ impl Servers {
             ui.label(RichText::new(&document.manifest().episode.title).strong());
         } else {
             ui.colored_label(MUTED, "Choose an episode to create its server.");
+            ui.colored_label(
+                MUTED,
+                "Open Episodes, then Play or Details on a card to select it.",
+            );
         }
         ui.add_space(8.0);
 
@@ -239,6 +243,14 @@ impl Servers {
             .clicked()
         {
             self.create(runner);
+        }
+        if runner.selected.is_none() {
+            ui.colored_label(
+                MUTED,
+                "Select an episode first: open Episodes, then Play or Details on a card.",
+            );
+        } else if !self.accept {
+            ui.colored_label(MUTED, "Accept the server EULA to enable creation.");
         }
     }
 
