@@ -1,0 +1,11 @@
+[package]
+name = "cloud9-app"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+cloud9-core.workspace = true
+eframe = { version = "0.32", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+tracing.workspace = true

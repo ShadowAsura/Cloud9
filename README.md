@@ -23,3 +23,7 @@ python -m scraper review --video-id recorded-01
 For live indexing, put yt-dlp on PATH and use `python -m scraper scrape --keyword "PopularMMOs Challenge Games" --limit 20`. Channel and playlist URLs and explicit video IDs are also supported. Add `--thumbnails` to keep personal-use thumbnails in the ignored cache. Live scraping uses yt-dlp in metadata-only mode. [yt-dlp options](https://github.com/yt-dlp/yt-dlp#usage-and-options)
 
 Review changes belong in `overrides/VIDEO_ID.json`. The scraper reapplies them on each successful rescrape. Use the review command to get stable paths and timestamped source links.
+
+## M3 · Desktop episode browser
+
+After seeding or scraping the index, run `cargo run -p cloud9-app`. Pass a custom SQLite path after `--` if required. The browser queries one page at a time and loads local thumbnails for visible cards on a background thread. The desktop fonts are distributed under the SIL Open Font License. [IBM Plex](https://github.com/IBM/plex)

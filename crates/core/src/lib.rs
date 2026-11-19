@@ -340,3 +340,4 @@ fn validate_stable_ids(value: &Value, path: &str) -> Result<(), Error> {
 
 mod review;
 pub use review::{Conflict, apply_overrides, merge_overrides};
+pub mod catalog;
