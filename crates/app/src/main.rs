@@ -636,100 +636,97 @@ fn render_card(
     thumbnails: &mut Thumbnails,
     width: f32,
 ) -> bool {
-    let inner_width = width - 2.0;
     Frame::new()
         .fill(SURFACE)
         .stroke(Stroke::new(1.0_f32, BORDER))
         .corner_radius(CARD_RADIUS)
-        .inner_margin(egui::Margin::same(0_i8))
         .show(ui, |ui| {
-            ui.set_width(inner_width);
-            ui.spacing_mut().item_spacing.y = 6.0;
+            ui.set_width(width);
+            ui.spacing_mut().item_spacing.y = 8.0;
 
-            // Thumbnail band.
-            let opened = thumbnails.draw(ui, card, inner_width).clicked();
+            // Thumbnail band — full width of card.
+            let opened = thumbnails.draw(ui, card, width).clicked();
 
-            // Content.
-            Frame::new()
-                .inner_margin(egui::Margin::same(12_i8))
-                .show(ui, |ui| {
-                    ui.set_width(inner_width - 24.0);
-                    ui.spacing_mut().item_spacing.y = 6.0;
+            ui.add_space(8.0);
 
-                    // Mode chip + version, aligned to the right.
-                    ui.horizontal(|ui| {
+            // Content — stacked vertically below the thumbnail.
+            ui.vertical(|ui| {
+                ui.set_width(width - 24.0);
+                ui.spacing_mut().item_spacing.y = 6.0;
+
+                // Mode chip + version, aligned to the right.
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(mode_label(&card.mode))
+                            .color(ACCENT)
+                            .small()
+                            .strong(),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new(mode_label(&card.mode))
-                                .color(ACCENT)
-                                .small()
-                                .strong(),
+                            RichText::new(&card.version)
+                                .monospace()
+                                .color(TEXT_DIM)
+                                .small(),
                         );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(&card.version)
-                                    .monospace()
-                                    .color(TEXT_DIM)
-                                    .small(),
-                            );
-                        });
                     });
+                });
 
-                    ui.add_space(4.0);
+                ui.add_space(4.0);
 
-                    // Title, up to two lines.
-                    let mut title = egui::text::LayoutJob::simple(
-                        card.title.clone(),
-                        FontId::proportional(17.0),
-                        TEXT,
-                        inner_width - 24.0,
-                    );
-                    title.wrap.max_rows = 2;
-                    ui.allocate_ui_with_layout(
-                        vec2(inner_width - 24.0_f32, 48.0_f32),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            ui.label(title).on_hover_text(&card.title);
-                        },
-                    );
+                // Title, up to two lines.
+                let mut title = egui::text::LayoutJob::simple(
+                    card.title.clone(),
+                    FontId::proportional(17.0),
+                    TEXT,
+                    width - 24.0,
+                );
+                title.wrap.max_rows = 2;
+                ui.allocate_ui_with_layout(
+                    vec2(width - 24.0_f32, 44.0_f32),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.label(title).on_hover_text(&card.title);
+                    },
+                );
 
-                    ui.add_space(2.0);
+                ui.add_space(2.0);
 
-                    // Status / tags line.
-                    let (status, color) = if card.community_setup {
-                        ("Community setup".to_owned(), OK)
-                    } else if card.review_count > 0 {
-                        (format!("Needs review ({})", card.review_count), MUTED)
+                // Status / tags line.
+                let (status, color) = if card.community_setup {
+                    ("Community setup".to_owned(), OK)
+                } else if card.review_count > 0 {
+                    (format!("Needs review ({})", card.review_count), MUTED)
+                } else {
+                    ("Indexed".into(), MUTED)
+                };
+                let tags = if card.tags.is_empty() {
+                    status
+                } else {
+                    format!("{status}  /  {}", card.tags.join(", "))
+                };
+                ui.add(
+                    egui::Label::new(RichText::new(tags).size(12.0).color(color)).truncate(),
+                );
+
+                ui.add_space(10.0);
+
+                // Action row: primary action left, watch link right.
+                let button_clicked = ui
+                    .small_button(if card.community_setup {
+                        "Play"
                     } else {
-                        ("Indexed".into(), MUTED)
-                    };
-                    let tags = if card.tags.is_empty() {
-                        status
-                    } else {
-                        format!("{status}  /  {}", card.tags.join(", "))
-                    };
-                    ui.add(
-                        egui::Label::new(RichText::new(tags).size(12.0).color(color)).truncate(),
-                    );
-
-                    ui.add_space(10.0);
-
-                    // Action row: primary action left, watch link right.
-                    let button_clicked = ui
-                        .small_button(if card.community_setup {
-                            "Play"
-                        } else {
-                            "Details"
-                        })
-                        .clicked();
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            ui.hyperlink_to("Watch episode", &card.url);
-                        },
-                    );
-                    opened || button_clicked
-                })
-                .inner
+                        "Details"
+                    })
+                    .clicked();
+                ui.with_layout(
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        ui.hyperlink_to("Watch episode", &card.url);
+                    },
+                );
+                opened || button_clicked
+            });
         })
         .inner
 }
