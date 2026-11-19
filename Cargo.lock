@@ -471,6 +471,8 @@ dependencies = [
  "cloud9-world",
  "eframe",
  "image",
+ "serde_json",
+ "tempfile",
  "tracing",
 ]
 

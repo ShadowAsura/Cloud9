@@ -20,15 +20,17 @@ python -m scraper recorded scraper/tests/fixtures/with-captions.json
 python -m scraper review --video-id recorded-01
 ```
 
-For live indexing, put yt-dlp on PATH and use `python -m scraper scrape --keyword "PopularMMOs Challenge Games" --limit 20`. Channel and playlist URLs and explicit video IDs are also supported. Add `--thumbnails` to keep personal-use thumbnails in the ignored cache. Live scraping uses yt-dlp in metadata-only mode. [yt-dlp options](https://github.com/yt-dlp/yt-dlp#usage-and-options)
+For live indexing, put yt-dlp on PATH and use `python -m scraper scrape --keyword "PopularMMOs Challenge Games" --uploader PopularMMOs --limit 25 --thumbnails`. Live indexing collects titles, game modes, mod clues, and thumbnail links from public listings. Thumbnail images stay in the ignored local cache. [yt-dlp options](https://github.com/yt-dlp/yt-dlp#usage-and-options)
 
-Review changes belong in `overrides/VIDEO_ID.json`. The scraper reapplies them on each successful rescrape. Use the review command to get stable paths and timestamped source links.
+Contribute reviewed villager trades, chests, kits, and layouts in `community/VIDEO_ID.json`. The catalog applies personal changes from `overrides/VIDEO_ID.json` afterward. [Community setup guide](community/README.md)
 
 ## M3 · Desktop episode browser
 
 After seeding or scraping the index, run `cargo run -p cloud9-app`. Pass a custom SQLite path after `--` if required. The browser queries one page at a time and loads local thumbnails for visible cards on a background thread. The desktop fonts are distributed under the SIL Open Font License. [IBM Plex](https://github.com/IBM/plex)
 
 ## M4 · Minecraft runtime
+
+The **Instances** screen reopens saved episodes, shows their locked Java and mods, and lets you resume a save or start a fresh round. Start a new instance from the episode browser to pick up later community changes. [Prism instance guide](https://www.prismlauncher.org/wiki/getting-started/create-instance/)
 
 Choose **Run plan** on an episode card, point it at your local mod directory, and select a Java 8 executable or set `JAVA8_HOME`. The launcher downloads hashed Minecraft and Forge artifacts to the ignored cache and copies verified user-supplied mods into a fresh instance. If the Forge version JSON exists without its JAR, preparation repairs the installation.
 
@@ -68,6 +70,6 @@ GitHub Actions tests the Rust workspace and offline Python scraper on Windows an
 
 Use `runner-cli bundle instances/INSTANCE report.zip` or pass a server folder to collect local diagnostic log excerpts. Review the archive before sharing. `runner-cli cache-prune` removes older content-addressed mod cache entries. Existing runs have their own copies. The scraper keeps its personal thumbnail cache within 256 MiB. If an interrupted scrape leaves a JSON export missing, run `python -m scraper sync` to rebuild exports from SQLite.
 
-An optional scraper extractor can be supplied with `--extractor module:factory`. The factory returns an object implementing `Extractor`. Findings must have a source span and pass manifest validation.
+The offline recorded-fixture command supports `--extractor module:factory` for testing source-cited findings against the manifest schema.
 
 Set `CLOUD9_PROFILE` to a JSON runtime profile for another compatible legacy Forge target. The headless form accepts the same fields in a TOML profile. A profile needs Java, Forge artifacts and hashes, and its server logging configuration. Use a helper built for the targeted Minecraft version.

@@ -26,12 +26,32 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub fn open(directory: &Path) -> Result<Self, Error> {
+    /// Read instance metadata for display. Launches must use open or verify.
+    pub fn inspect(directory: &Path) -> Result<Self, Error> {
         let root = dunce::canonicalize(directory)?;
         let mut state: Self = serde_json::from_slice(&fs::read(root.join("runner.lock.json"))?)?;
         state.root = root;
+        Ok(state)
+    }
+
+    pub fn open(directory: &Path) -> Result<Self, Error> {
+        let state = Self::inspect(directory)?;
         state.verify()?;
         Ok(state)
+    }
+
+    /// Hold the file for the entire session to prevent concurrent clients
+    /// from changing the same instance saves.
+    pub fn session_lock(&self) -> Result<fs::File, Error> {
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(self.root.join("cloud9-session.lock"))?;
+        fs2::FileExt::try_lock_exclusive(&file)
+            .map_err(|error| Error::Config(format!("Instance is already in use ({error})")))?;
+        Ok(file)
     }
 
     pub fn verify(&self) -> Result<(), Error> {

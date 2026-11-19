@@ -26,6 +26,11 @@ pub struct EpisodeCard {
 pub struct Catalog(Connection);
 
 impl Catalog {
+    pub fn data_version(&self) -> Result<u64, rusqlite::Error> {
+        self.0
+            .query_row("PRAGMA data_version", [], |row| row.get(0))
+    }
+
     pub fn open(path: &Path) -> Result<Self, rusqlite::Error> {
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         connection.busy_timeout(std::time::Duration::from_millis(250))?;

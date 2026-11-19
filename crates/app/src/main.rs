@@ -1,3 +1,4 @@
+mod instances;
 mod runner;
 mod servers;
 
@@ -195,6 +196,7 @@ fn decode_thumbnail(path: &Path) -> Option<ColorImage> {
 #[derive(PartialEq, Eq)]
 enum Screen {
     Episodes,
+    Instances,
     RunPlan,
     Running,
     Servers,
@@ -203,9 +205,12 @@ enum Screen {
 struct Browser {
     screen: Screen,
     runner: runner::Runner,
+    instances: instances::Instances,
     servers: servers::Servers,
     path: PathBuf,
     catalog: Option<Catalog>,
+    catalog_version: Option<u64>,
+    next_catalog_check: std::time::Instant,
     filters: Filters,
     cards: Vec<EpisodeCard>,
     error: Option<String>,
@@ -220,9 +225,12 @@ impl Browser {
         let mut browser = Self {
             screen: Screen::Episodes,
             runner: runner::Runner::new(),
+            instances: instances::Instances::default(),
             servers: servers::Servers::new(),
             path,
             catalog: None,
+            catalog_version: None,
+            next_catalog_check: std::time::Instant::now(),
             filters: Filters::default(),
             cards: Vec::new(),
             error: None,
@@ -238,6 +246,7 @@ impl Browser {
     fn open(&mut self) {
         match Catalog::open(&self.path) {
             Ok(catalog) => {
+                self.catalog_version = catalog.data_version().ok();
                 self.catalog = Some(catalog);
                 self.refresh();
             }
@@ -246,6 +255,25 @@ impl Browser {
                 self.error = Some(format!("Could not open {} ({error})", self.path.display()));
             }
         }
+    }
+
+    fn check_catalog(&mut self, ctx: &egui::Context) {
+        let interval = std::time::Duration::from_secs(2);
+        let now = std::time::Instant::now();
+        if now >= self.next_catalog_check {
+            self.next_catalog_check = now + interval;
+            let version = self
+                .catalog
+                .as_ref()
+                .and_then(|catalog| catalog.data_version().ok());
+            if version.is_some() && version != self.catalog_version {
+                self.catalog_version = version;
+                let reset_scroll = self.reset_scroll;
+                self.refresh();
+                self.reset_scroll = reset_scroll;
+            }
+        }
+        ctx.request_repaint_after(interval);
     }
 
     fn refresh(&mut self) {
@@ -265,6 +293,9 @@ impl Browser {
 
 impl eframe::App for Browser {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        if self.screen == Screen::Episodes {
+            self.check_catalog(ctx);
+        }
         self.thumbs.update(ctx);
         if self.runner.poll(ctx) {
             self.screen = Screen::Running;
@@ -289,6 +320,7 @@ impl eframe::App for Browser {
                     ui.separator();
                     for (screen, label) in [
                         (Screen::Episodes, "Episodes"),
+                        (Screen::Instances, "Instances"),
                         (Screen::RunPlan, "Run plan"),
                         (Screen::Running, "Running"),
                         (Screen::Servers, "Servers"),
@@ -301,6 +333,13 @@ impl eframe::App for Browser {
             .frame(Frame::new().fill(GROUND).inner_margin(24))
             .show(ctx, |ui| {
                 match self.screen {
+                    Screen::Instances => {
+                        if let Some(path) = self.instances.view(ui) {
+                            self.runner.select_saved(path);
+                            self.screen = Screen::RunPlan;
+                        }
+                        return;
+                    }
                     Screen::RunPlan => {
                         self.runner.plan(ui);
                         return;

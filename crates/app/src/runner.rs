@@ -24,7 +24,7 @@ enum Update {
     SignedIn(Account),
     Error(String),
     Notice(String),
-    Launched(Child, PathBuf, Receiver<LogEvent>),
+    Launched(Child, PathBuf, Receiver<LogEvent>, std::fs::File),
 }
 
 pub struct Runner {
@@ -50,6 +50,9 @@ pub struct Runner {
     status: String,
     error: bool,
     process: Option<Child>,
+    session_lock: Option<std::fs::File>,
+    saved: Option<PathBuf>,
+    saved_lock: Option<Instance>,
     log_stream: Option<Receiver<LogEvent>>,
     logfile: Option<std::fs::File>,
     events: VecDeque<LogEvent>,
@@ -81,6 +84,9 @@ impl Runner {
             status: String::new(),
             error: false,
             process: None,
+            session_lock: None,
+            saved: None,
+            saved_lock: None,
             log_stream: None,
             logfile: None,
             events: VecDeque::new(),
@@ -105,7 +111,7 @@ impl Runner {
                     self.pending = false;
                 }
                 Update::Notice(notice) => self.status = notice,
-                Update::Launched(child, path, stream) => {
+                Update::Launched(child, path, stream, lock) => {
                     self.status = format!("Minecraft running · {}", path.display());
                     self.pending = false;
                     self.events.clear();
@@ -119,6 +125,7 @@ impl Runner {
                     self.latest = Some(path.clone());
                     self.previous = path.join("round-snapshot").is_dir().then_some(path);
                     self.process = Some(child);
+                    self.session_lock = Some(lock);
                     self.log_stream = Some(stream);
                 }
             }
@@ -140,6 +147,7 @@ impl Runner {
                     self.error = !status.success();
                     self.status = format!("Minecraft exited ({status})");
                     self.process = None;
+                    self.session_lock = None;
                 }
                 Err(error) => {
                     self.status = error.to_string();
@@ -157,6 +165,8 @@ impl Runner {
     pub fn select(&mut self, result: Result<Document, String>) {
         self.previous = None;
         self.matchup = None;
+        self.saved = None;
+        self.saved_lock = None;
         match result {
             Ok(document) => {
                 self.selected = Some(document);
@@ -170,6 +180,22 @@ impl Runner {
                 self.status = error;
                 self.error = true;
             }
+        }
+    }
+
+    pub fn select_saved(&mut self, path: PathBuf) {
+        let multiplayer =
+            path.join("servers.dat").is_file() && !path.join("round-snapshot").is_dir();
+        match Document::load(&path.join("episode.json")) {
+            Ok(document) => {
+                self.select(Ok(document));
+                self.saved_lock = Instance::inspect(&path).ok();
+                self.saved = Some(path);
+                if multiplayer {
+                    self.dev = false;
+                }
+            }
+            Err(error) => self.select(Err(error.to_string())),
         }
     }
 
@@ -234,13 +260,17 @@ impl Runner {
         let (supplied, java, helper, templates) = self.paths();
         let ram = self.ram;
         let matchup = if reset { None } else { self.matchup.clone() };
-        let previous = reset.then(|| self.previous.clone()).flatten();
+        let saved = if reset {
+            self.saved.clone().or_else(|| self.previous.clone())
+        } else {
+            self.saved.clone()
+        };
         std::thread::spawn(move || {
             let result = (|| -> Result<_, Box<dyn std::error::Error>> {
                 let mut document = document;
-                let profile = Profile::selected()?;
                 let cache = PathBuf::from(".cache/minecraft");
                 if let Some(matchup) = &matchup {
+                    let profile = Profile::selected()?;
                     let instance = create_instance(
                         &PathBuf::from("instances"),
                         &cache,
@@ -249,6 +279,7 @@ impl Runner {
                         &supplied,
                         java.as_deref(),
                     )?;
+                    let lock = instance.session_lock()?;
                     cloud9_world::bookmark_server(
                         &instance.root,
                         &document.manifest().episode.title,
@@ -263,12 +294,14 @@ impl Runner {
                         Some(matchup.host_port()?),
                         logs,
                     )?;
-                    return Ok(Update::Launched(child, instance.root, receive));
+                    return Ok(Update::Launched(child, instance.root, receive, lock));
                 }
-                let instance = if let Some(previous) = previous {
-                    document = Document::load(&previous.join("episode.json"))?;
-                    Instance::open(&previous)?
+                let existing = saved.is_some();
+                let instance = if let Some(path) = saved {
+                    document = Document::load(&path.join("episode.json"))?;
+                    Instance::open(&path)?
                 } else {
+                    let profile = Profile::selected()?;
                     create_instance_with_helper(
                         &PathBuf::from("instances"),
                         &cache,
@@ -279,39 +312,50 @@ impl Runner {
                         &helper,
                     )?
                 };
+                let lock = instance.session_lock()?;
+                let has_snapshot = instance.root.join("round-snapshot").is_dir();
+                let multiplayer =
+                    existing && !has_snapshot && instance.root.join("servers.dat").is_file();
+                if multiplayer && !account.authenticated() {
+                    return Err(
+                        "Microsoft sign-in required for a saved multiplayer instance".into(),
+                    );
+                }
                 let _ = sender.send(Update::Notice(
                     "Verifying and installing the Minecraft runtime".into(),
                 ));
                 let runtime = ClientRuntime::prepare(&Installer::new(&cache)?, &instance)?;
-                let _ = sender.send(Update::Notice("Checking the item registry".into()));
-                let registry = bootstrap_client_registry(
-                    &runtime,
-                    &instance,
-                    &cache.join("registries"),
-                    ram,
-                    &account,
-                )?;
-                let round = cloud9_world::EpisodeWorld::open(
-                    &document,
-                    instance.root.join("saves/Cloud9"),
-                    instance.root.join("round-snapshot"),
-                    cloud9_world::SetupContext {
-                        templates: &templates,
-                        aliases: &PathBuf::from("aliases"),
-                        mods: &instance.mods,
-                        registry: &registry,
-                        mod_set_hash: &instance.mod_set_hash,
-                        run_id: "cloud9-round",
-                    },
-                )?;
-                if reset {
-                    round.reset()?;
-                } else {
-                    round.prepare()?;
+                if reset || !has_snapshot && !multiplayer {
+                    let _ = sender.send(Update::Notice("Checking the item registry".into()));
+                    let registry = bootstrap_client_registry(
+                        &runtime,
+                        &instance,
+                        &cache.join("registries"),
+                        ram,
+                        &account,
+                    )?;
+                    let round = cloud9_world::EpisodeWorld::open(
+                        &document,
+                        instance.root.join("saves/Cloud9"),
+                        instance.root.join("round-snapshot"),
+                        cloud9_world::SetupContext {
+                            templates: &templates,
+                            aliases: &PathBuf::from("aliases"),
+                            mods: &instance.mods,
+                            registry: &registry,
+                            mod_set_hash: &instance.mod_set_hash,
+                            run_id: "cloud9-round",
+                        },
+                    )?;
+                    if reset {
+                        round.reset()?;
+                    } else {
+                        round.prepare()?;
+                    }
                 }
                 let (logs, receive) = channel();
                 let child = runtime.launch(&instance, &account, ram, None, logs)?;
-                Ok(Update::Launched(child, instance.root, receive))
+                Ok(Update::Launched(child, instance.root, receive, lock))
             })();
             let _ = sender.send(result.unwrap_or_else(|error| Update::Error(error.to_string())));
         });
@@ -352,30 +396,44 @@ impl Runner {
                 });
             }
             ui.separator();
-            ui.horizontal(|ui| {
-                ui.label("Local mod directory");
-                let input = ui.text_edit_singleline(&mut self.supplied);
-                if matches!(self.action_focus, Some("Locate jar" | "Fetch")) {
-                    input.request_focus();
-                    self.action_focus = None;
+            if let Some(path) = &self.saved {
+                ui.label(format!("Instance folder {} ", path.display()));
+                if let Some(instance) = &self.saved_lock {
+                    ui.colored_label(
+                        MUTED,
+                        format!("Locked Java executable {}", instance.java.display()),
+                    );
+                    for locked in &instance.mods {
+                        ui.monospace(format!("{} {}", locked.mod_id, locked.version));
+                    }
                 }
-            });
-            ui.horizontal(|ui| {
-                ui.label("Java executable");
-                let input =
-                    ui.add(egui::TextEdit::singleline(&mut self.java).hint_text("Auto-detect"));
-                if self.action_focus == Some("Locate Java") {
-                    input.request_focus();
-                    self.action_focus = None;
-                }
-            });
-            ui.horizontal(|ui| {
-                ui.label("Runner helper JAR");
-                ui.text_edit_singleline(&mut self.helper);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Templates");
-                ui.text_edit_singleline(&mut self.template_root);
+            }
+            ui.add_enabled_ui(self.saved.is_none(), |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Local mod directory");
+                    let input = ui.text_edit_singleline(&mut self.supplied);
+                    if matches!(self.action_focus, Some("Locate jar" | "Fetch")) {
+                        input.request_focus();
+                        self.action_focus = None;
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Java executable");
+                    let input =
+                        ui.add(egui::TextEdit::singleline(&mut self.java).hint_text("Auto-detect"));
+                    if self.action_focus == Some("Locate Java") {
+                        input.request_focus();
+                        self.action_focus = None;
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Runner helper JAR");
+                    ui.text_edit_singleline(&mut self.helper);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Templates");
+                    ui.text_edit_singleline(&mut self.template_root);
+                });
             });
             let ram = ui.add(
                 egui::Slider::new(&mut self.ram, 1024..=16384)
@@ -388,8 +446,16 @@ impl Runner {
                 self.action_focus = None;
             }
             ui.separator();
+            let saved_server = self.saved.as_ref().is_some_and(|path| {
+                path.join("servers.dat").is_file() && !path.join("round-snapshot").is_dir()
+            });
             if let Some(matchup) = &self.matchup {
                 ui.colored_label(ACCENT, format!("Join {}", matchup.address));
+            } else if saved_server {
+                ui.colored_label(
+                    ACCENT,
+                    "Open Multiplayer to connect to the bookmarked server.",
+                );
             } else {
                 ui.checkbox(&mut self.dev, "Local development profile");
             }
@@ -442,6 +508,21 @@ impl Runner {
             {
                 self.launch(false);
             }
+            if self
+                .saved
+                .as_ref()
+                .is_some_and(|path| path.join("round-snapshot").is_dir())
+                && ui
+                    .add_enabled(
+                        !self.pending
+                            && self.process.is_none()
+                            && (self.dev || self.account.is_some()),
+                        egui::Button::new("Start fresh round"),
+                    )
+                    .clicked()
+            {
+                self.launch(true);
+            }
         } else {
             ui.colored_label(MUTED, "Choose an episode in the browser.");
         }
@@ -458,8 +539,7 @@ impl Runner {
     pub fn running(&mut self, ui: &mut egui::Ui) -> bool {
         ui.heading(RichText::new("Running").size(31.0));
         self.status(ui);
-        if self.previous.is_some()
-            && self.selected.is_some()
+        if let Some(path) = self.previous.clone()
             && ui
                 .add_enabled(
                     !self.pending && self.process.is_none() && (self.dev || self.account.is_some()),
@@ -467,6 +547,7 @@ impl Runner {
                 )
                 .clicked()
         {
+            self.select_saved(path);
             self.launch(true);
         }
         if let Some(path) = &self.latest

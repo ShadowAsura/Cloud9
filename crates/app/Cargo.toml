@@ -12,3 +12,7 @@ tracing.workspace = true
 cloud9-mc = { path = "../mc" }
 cloud9-world = { path = "../world" }
 cloud9-server = { path = "../server" }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
