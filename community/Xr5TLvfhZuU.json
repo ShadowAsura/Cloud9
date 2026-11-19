@@ -1,0 +1,847 @@
+{
+  "schema_version": 1,
+  "patches": [
+    {
+      "path": "/game",
+      "value": {
+        "mc_version": {
+          "value": "1.8.9",
+          "confidence": 1,
+          "source": "manual",
+          "status": "confirmed"
+        },
+        "loader": {
+          "type": {
+            "value": "forge",
+            "confidence": 1,
+            "source": "manual",
+            "status": "confirmed"
+          },
+          "version": {
+            "value": "11.15.1.2318",
+            "confidence": 1,
+            "source": "manual",
+            "status": "confirmed"
+          }
+        },
+        "java_major": {
+          "value": 8,
+          "confidence": 1,
+          "source": "manual",
+          "status": "confirmed"
+        }
+      },
+      "expected": {
+        "mc_version": {
+          "value": "1.8.9",
+          "confidence": 0.35,
+          "source": "manual",
+          "status": "needs_review",
+          "defaulted": true
+        },
+        "loader": {
+          "type": {
+            "value": "forge",
+            "confidence": 0.35,
+            "source": "manual",
+            "status": "needs_review",
+            "defaulted": true
+          },
+          "version": {
+            "value": "11.15.1.2318",
+            "confidence": 0.35,
+            "source": "manual",
+            "status": "needs_review",
+            "defaulted": true
+          }
+        },
+        "java_major": {
+          "value": 8,
+          "confidence": 0.35,
+          "source": "manual",
+          "status": "needs_review",
+          "defaulted": true
+        }
+      }
+    },
+    {
+      "path": "/mods",
+      "value": [
+        {
+          "id": "lucky-block",
+          "role": "lucky",
+          "mod_id": {
+            "value": "lucky",
+            "confidence": 1,
+            "source": "manual",
+            "status": "confirmed"
+          },
+          "display_name": {
+            "value": "Lucky Block",
+            "confidence": 1,
+            "source": "manual",
+            "status": "confirmed"
+          },
+          "version_range": {
+            "value": "7.0.0",
+            "confidence": 1,
+            "source": "manual",
+            "status": "confirmed"
+          },
+          "aliases": [
+            "Lucky Block"
+          ],
+          "optional": false,
+          "client_only": false,
+          "file_hint": {
+            "filename": "lucky-block-forge-1.8.9-2.0.jar",
+            "sha256": "b44646f076d323ae8782d7b57ed848d76f8dfe8ae6c87a6f7a9481bf4e66ddb7",
+            "url": "https://www.curseforge.com/minecraft/mc-mods/lucky-block/files/3652657"
+          }
+        }
+      ],
+      "expected": [
+        {
+          "id": "lucky-block",
+          "role": "lucky",
+          "mod_id": {
+            "value": null,
+            "confidence": 0.35,
+            "source": "manual",
+            "status": "needs_review",
+            "defaulted": true
+          },
+          "display_name": {
+            "value": "Lucky Block",
+            "confidence": 0.85,
+            "source": "description",
+            "source_span": "Lucky Block",
+            "status": "auto"
+          },
+          "aliases": [
+            "Lucky Block",
+            "Lucky Blocks"
+          ],
+          "optional": false,
+          "client_only": false
+        }
+      ]
+    },
+    {
+      "path": "/map/overrides",
+      "value": {
+        "spawn": [
+          0,
+          65,
+          0
+        ],
+        "gamerules": {
+          "keepInventory": "true",
+          "doMobSpawning": "false"
+        },
+        "kits": [
+          {
+            "id": "starting-weapon",
+            "item": {
+              "id": "minecraft:stone_sword",
+              "raw_text": "starting weapon"
+            },
+            "count": 1
+          },
+          {
+            "id": "food",
+            "item": {
+              "id": "minecraft:cooked_beef",
+              "raw_text": "food"
+            },
+            "count": 4
+          }
+        ],
+        "challenge": {
+          "kind": "chicken_jockey",
+          "trigger": [
+            0,
+            65,
+            5
+          ],
+          "opponent": [
+            0,
+            65,
+            9
+          ]
+        }
+      },
+      "expected": {}
+    },
+    {
+      "path": "/villagers",
+      "value": [
+        {
+          "id": "arena-trader",
+          "role": "Arena Trader",
+          "position": [
+            4,
+            65,
+            -4
+          ],
+          "trades": [
+            {
+              "id": "iron-sword",
+              "buy": [
+                {
+                  "id": "emerald",
+                  "item": {
+                    "id": "minecraft:emerald",
+                    "raw_text": "emerald"
+                  },
+                  "count": 2
+                }
+              ],
+              "sell": {
+                "id": "iron-sword",
+                "item": {
+                  "id": "minecraft:iron_sword",
+                  "raw_text": "iron sword"
+                },
+                "count": 1
+              },
+              "max_uses": 32
+            },
+            {
+              "id": "iron-armor",
+              "buy": [
+                {
+                  "id": "emerald",
+                  "item": {
+                    "id": "minecraft:emerald",
+                    "raw_text": "emerald"
+                  },
+                  "count": 2
+                }
+              ],
+              "sell": {
+                "id": "iron-chestplate",
+                "item": {
+                  "id": "minecraft:iron_chestplate",
+                  "raw_text": "iron chestplate"
+                },
+                "count": 1
+              },
+              "max_uses": 32
+            },
+            {
+              "id": "food",
+              "buy": [
+                {
+                  "id": "gold-nugget",
+                  "item": {
+                    "id": "minecraft:gold_nugget",
+                    "raw_text": "gold nugget"
+                  },
+                  "count": 2
+                }
+              ],
+              "sell": {
+                "id": "steak",
+                "item": {
+                  "id": "minecraft:cooked_beef",
+                  "raw_text": "steak"
+                },
+                "count": 4
+              },
+              "max_uses": 32
+            }
+          ]
+        }
+      ],
+      "expected": []
+    },
+    {
+      "path": "/center",
+      "value": {
+        "kind": "arena",
+        "blocks": [
+          {
+            "id": "fight-trigger",
+            "pos": [
+              0,
+              65,
+              5
+            ],
+            "item": {
+              "id": "minecraft:gold_block",
+              "raw_text": "fight trigger"
+            }
+          },
+          {
+            "id": "first-lucky-block",
+            "pos": [
+              -22,
+              65,
+              0
+            ],
+            "item": {
+              "id": "lucky:lucky_block",
+              "raw_text": "first lucky block"
+            }
+          },
+          {
+            "id": "pad-24-0",
+            "pos": [
+              -24,
+              64,
+              -2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 24 0"
+            }
+          },
+          {
+            "id": "pad-24-1",
+            "pos": [
+              -24,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 24 1"
+            }
+          },
+          {
+            "id": "pad-24-2",
+            "pos": [
+              -24,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 24 2"
+            }
+          },
+          {
+            "id": "pad-24-3",
+            "pos": [
+              -24,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 24 3"
+            }
+          },
+          {
+            "id": "pad-24-4",
+            "pos": [
+              -24,
+              64,
+              2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 24 4"
+            }
+          },
+          {
+            "id": "pad-23-0",
+            "pos": [
+              -23,
+              64,
+              -2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 23 0"
+            }
+          },
+          {
+            "id": "pad-23-1",
+            "pos": [
+              -23,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 23 1"
+            }
+          },
+          {
+            "id": "pad-23-2",
+            "pos": [
+              -23,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 23 2"
+            }
+          },
+          {
+            "id": "pad-23-3",
+            "pos": [
+              -23,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 23 3"
+            }
+          },
+          {
+            "id": "pad-23-4",
+            "pos": [
+              -23,
+              64,
+              2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 23 4"
+            }
+          },
+          {
+            "id": "pad-22-0",
+            "pos": [
+              -22,
+              64,
+              -2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 22 0"
+            }
+          },
+          {
+            "id": "pad-22-1",
+            "pos": [
+              -22,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 22 1"
+            }
+          },
+          {
+            "id": "pad-22-2",
+            "pos": [
+              -22,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 22 2"
+            }
+          },
+          {
+            "id": "pad-22-3",
+            "pos": [
+              -22,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 22 3"
+            }
+          },
+          {
+            "id": "pad-22-4",
+            "pos": [
+              -22,
+              64,
+              2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 22 4"
+            }
+          },
+          {
+            "id": "pad-21-0",
+            "pos": [
+              -21,
+              64,
+              -2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 21 0"
+            }
+          },
+          {
+            "id": "pad-21-1",
+            "pos": [
+              -21,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 21 1"
+            }
+          },
+          {
+            "id": "pad-21-2",
+            "pos": [
+              -21,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 21 2"
+            }
+          },
+          {
+            "id": "pad-21-3",
+            "pos": [
+              -21,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 21 3"
+            }
+          },
+          {
+            "id": "pad-21-4",
+            "pos": [
+              -21,
+              64,
+              2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 21 4"
+            }
+          },
+          {
+            "id": "pad-20-0",
+            "pos": [
+              -20,
+              64,
+              -2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 20 0"
+            }
+          },
+          {
+            "id": "pad-20-1",
+            "pos": [
+              -20,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 20 1"
+            }
+          },
+          {
+            "id": "pad-20-2",
+            "pos": [
+              -20,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 20 2"
+            }
+          },
+          {
+            "id": "pad-20-3",
+            "pos": [
+              -20,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 20 3"
+            }
+          },
+          {
+            "id": "pad-20-4",
+            "pos": [
+              -20,
+              64,
+              2
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 20 4"
+            }
+          },
+          {
+            "id": "pad-19-1",
+            "pos": [
+              -19,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 19 1"
+            }
+          },
+          {
+            "id": "pad-19-2",
+            "pos": [
+              -19,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 19 2"
+            }
+          },
+          {
+            "id": "pad-19-3",
+            "pos": [
+              -19,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 19 3"
+            }
+          },
+          {
+            "id": "pad-18-1",
+            "pos": [
+              -18,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 18 1"
+            }
+          },
+          {
+            "id": "pad-18-2",
+            "pos": [
+              -18,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 18 2"
+            }
+          },
+          {
+            "id": "pad-18-3",
+            "pos": [
+              -18,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 18 3"
+            }
+          },
+          {
+            "id": "pad-17-1",
+            "pos": [
+              -17,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 17 1"
+            }
+          },
+          {
+            "id": "pad-17-2",
+            "pos": [
+              -17,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 17 2"
+            }
+          },
+          {
+            "id": "pad-17-3",
+            "pos": [
+              -17,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 17 3"
+            }
+          },
+          {
+            "id": "pad-16-1",
+            "pos": [
+              -16,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 16 1"
+            }
+          },
+          {
+            "id": "pad-16-2",
+            "pos": [
+              -16,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 16 2"
+            }
+          },
+          {
+            "id": "pad-16-3",
+            "pos": [
+              -16,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 16 3"
+            }
+          },
+          {
+            "id": "pad-15-1",
+            "pos": [
+              -15,
+              64,
+              -1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 15 1"
+            }
+          },
+          {
+            "id": "pad-15-2",
+            "pos": [
+              -15,
+              64,
+              0
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 15 2"
+            }
+          },
+          {
+            "id": "pad-15-3",
+            "pos": [
+              -15,
+              64,
+              1
+            ],
+            "item": {
+              "id": "minecraft:stonebrick",
+              "raw_text": "pad 15 3"
+            }
+          }
+        ],
+        "chests": [
+          {
+            "id": "supply",
+            "pos": [
+              -4,
+              65,
+              -4
+            ],
+            "slots": [
+              {
+                "id": "lucky-blocks",
+                "item": {
+                  "id": "lucky:lucky_block",
+                  "raw_text": "lucky blocks"
+                },
+                "count": 6,
+                "slot": 0
+              },
+              {
+                "id": "shopping-emeralds",
+                "item": {
+                  "id": "minecraft:emerald",
+                  "raw_text": "shopping emeralds"
+                },
+                "count": 4,
+                "slot": 4
+              },
+              {
+                "id": "building-blocks",
+                "item": {
+                  "id": "minecraft:cobblestone",
+                  "raw_text": "building blocks"
+                },
+                "count": 16,
+                "slot": 8
+              }
+            ]
+          }
+        ],
+        "generators": []
+      },
+      "expected": {
+        "kind": "arena",
+        "blocks": [],
+        "chests": [],
+        "generators": []
+      }
+    },
+    {
+      "path": "/findings",
+      "value": [
+        {
+          "id": "community-setup",
+          "value": "Original community arena, trader and Chicken Jockey fight",
+          "confidence": 1,
+          "source": "manual",
+          "status": "confirmed"
+        }
+      ],
+      "expected": [
+        {
+          "id": "community-setup",
+          "value": "Gameplay setup needs community review",
+          "confidence": 1,
+          "source": "manual",
+          "status": "needs_review"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "path": "/map/overrides/challenge",
+      "source": "episode description",
+      "url": "https://www.youtube.com/watch?v=Xr5TLvfhZuU",
+      "note": "The episode names the Chicken Jockey objective. Arena, exact trades and vanilla opponent are original community choices."
+    }
+  ]
+}

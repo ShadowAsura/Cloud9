@@ -1,5 +1,11 @@
 # Community episode setups
 
+## Tested example
+
+[Chicken Jockey Challenge Games](chicken-jockey.md) includes a playable solo round, a pinned Lucky Block dependency, and a repeatable Forge playtest.
+
+## Contributing a setup
+
 Cloud 9 indexes public episode metadata and caches thumbnails locally. Contribute gameplay setup as `community/VIDEO_ID.json`. Use the YouTube video ID and include timestamps for evidence that appears on screen.
 
 Patch paths can target `/game`, `/mods`, `/map`, `/villagers`, `/center`, `/findings`, and `/allow_multiple_lucky`. A path such as `/villagers/@merchant/trades/@starter` selects stable IDs. To add the first record, replace its entire list. See the [manifest fixtures](../schema/fixtures/v1) for trades and chest slots.

@@ -9,7 +9,7 @@ from jsonschema.exceptions import ValidationError
 
 from .collect import YouTube, recorded
 from .extract import duplicate_title, extract, extract_index
-from .storage import Catalog, community_patch, review_fields
+from .storage import MANIFEST, Catalog, apply_overrides, check_ids, community_patch, review_fields
 
 LOG = logging.getLogger("cloud9")
 
@@ -30,7 +30,16 @@ def run(args):
     if args.command == "check-community":
         files = sorted(args.community.glob("*.json"))
         for path in files:
-            community_patch(path)
+            patch = community_patch(path)
+            base = args.community / "episodes" / path.name
+            if base.is_file():
+                document = json.loads(base.read_text(encoding="utf-8"))
+                MANIFEST.validate(document)
+                if document["episode"]["video_id"] != path.stem:
+                    raise ValueError(f"community manifest identity does not match {path.name}")
+                reviewed = apply_overrides(document, patch)
+                MANIFEST.validate(reviewed)
+                check_ids(reviewed)
         LOG.info("checked %d community patch(es)", len(files))
         return 0
     catalog = Catalog(args.output)

@@ -24,10 +24,12 @@ const BORDER: Color32 = Color32::from_rgb(46, 42, 27);
 const OUTLINE: Color32 = Color32::from_rgb(58, 53, 34);
 
 fn main() -> eframe::Result {
-    let path = std::env::args_os()
-        .nth(1)
+    let mut args = std::env::args_os().skip(1);
+    let path = args
+        .next()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("data/episodes.sqlite"));
+    let episode = args.next().and_then(|id| id.into_string().ok());
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1100.0, 760.0])
@@ -39,7 +41,11 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |creation| {
             set_theme(&creation.egui_ctx);
-            Ok(Box::new(Browser::new(path, creation.egui_ctx.clone())))
+            let mut browser = Browser::new(path, creation.egui_ctx.clone());
+            if let Some(id) = episode {
+                browser.select_episode(&id);
+            }
+            Ok(Box::new(browser))
         }),
     )
 }
@@ -221,6 +227,16 @@ struct Browser {
 }
 
 impl Browser {
+    fn select_episode(&mut self, id: &str) {
+        let document = self
+            .catalog
+            .as_ref()
+            .ok_or_else(|| "Catalog unavailable".into())
+            .and_then(|catalog| catalog.document(id));
+        self.runner.select(document);
+        self.screen = Screen::RunPlan;
+    }
+
     fn new(path: PathBuf, ctx: egui::Context) -> Self {
         let mut browser = Self {
             screen: Screen::Episodes,
@@ -461,13 +477,8 @@ impl eframe::App for Browser {
                     for index in rows {
                         let card = &self.cards[index];
                         if render_card(ui, card, &mut self.thumbs) {
-                            let result = self
-                                .catalog
-                                .as_ref()
-                                .ok_or_else(|| "Catalog unavailable".into())
-                                .and_then(|catalog| catalog.document(&card.video_id));
-                            self.runner.select(result);
-                            self.screen = Screen::RunPlan;
+                            let id = card.video_id.clone();
+                            self.select_episode(&id);
                         }
                     }
                 });

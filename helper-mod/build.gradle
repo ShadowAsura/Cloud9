@@ -21,3 +21,8 @@ minecraft {
     mappings = 'stable_20'
     makeObfSourceJar = false
 }
+
+if (project.hasProperty('cloud9Playtest')) {
+    sourceSets.main.java.srcDir 'src/playtest/java'
+    archivesBaseName = 'runner-helper-playtest'
+}

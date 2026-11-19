@@ -20,6 +20,7 @@ import net.minecraft.scoreboard.ScorePlayerTeam;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
+import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.village.MerchantRecipe;
 import net.minecraft.village.MerchantRecipeList;
@@ -27,6 +28,7 @@ import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLLoadCompleteEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -50,10 +52,15 @@ public final class RunnerHelper {
     private static final Gson JSON = new Gson();
     private final Map<WorldServer, JsonObject> worlds = new WeakHashMap<>();
 
+    @SidedProxy(clientSide = "org.cloud9.runner.ClientStart", serverSide = "org.cloud9.runner.GameStart")
+    public static GameStart gameStart;
+
     @Mod.EventHandler
     public void initialize(FMLInitializationEvent event) {
         MinecraftForge.EVENT_BUS.register(this);
+        MinecraftForge.EVENT_BUS.register(new ChickenJockeyRound(worlds));
         net.minecraftforge.fml.common.FMLCommonHandler.instance().bus().register(this);
+        gameStart.initialize();
     }
 
     @Mod.EventHandler
@@ -269,6 +276,10 @@ public final class RunnerHelper {
         }
         persistent.setString(RUN_TAG, run);
         data.setTag("PlayerPersisted", persistent);
+        if (setup.has("challenge")) {
+            player.addChatMessage(new ChatComponentText(
+                    "Cloud 9: Open your Lucky Blocks, shop with the trader, then right-click the gold block to start the fight."));
+        }
     }
 
     private void runGenerators(WorldServer world, JsonObject setup) throws Exception {

@@ -354,7 +354,11 @@ impl Runner {
                     }
                 }
                 let (logs, receive) = channel();
-                let child = runtime.launch(&instance, &account, ram, None, logs)?;
+                let child = if multiplayer {
+                    runtime.launch(&instance, &account, ram, None, logs)?
+                } else {
+                    runtime.launch_prepared(&instance, &account, ram, logs)?
+                };
                 Ok(Update::Launched(child, instance.root, receive, lock))
             })();
             let _ = sender.send(result.unwrap_or_else(|error| Update::Error(error.to_string())));
@@ -366,6 +370,7 @@ impl Runner {
         ui.add_space(8.0);
         if let Some(document) = &self.selected {
             let episode = document.manifest();
+            let challenge = &document.source()["map"]["overrides"]["challenge"]["kind"];
             ui.label(RichText::new(&episode.episode.title).size(20.0));
             ui.colored_label(
                 MUTED,
@@ -394,6 +399,10 @@ impl Runner {
                         ui.hyperlink_to("Source", source);
                     }
                 });
+            }
+            if challenge == "chicken_jockey" {
+                ui.colored_label(ACCENT, "Community round");
+                ui.label("Open Lucky Blocks, trade with the Arena Trader, then right-click the gold block to fight.");
             }
             ui.separator();
             if let Some(path) = &self.saved {

@@ -4,7 +4,7 @@ use cloud9_core::{Document, Item, Mode};
 use cloud9_mc::{Alias, Registry, Resolution};
 use fastnbt::Value as Tag;
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -34,6 +34,16 @@ pub struct Settings {
     pub teams: Vec<Value>,
     pub kits: Vec<Value>,
     pub tile_entities: Vec<TileEntity>,
+    pub challenge: Option<Challenge>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Challenge {
+    ChickenJockey {
+        trigger: [i32; 3],
+        opponent: [i32; 3],
+    },
 }
 
 impl Default for Settings {
@@ -47,6 +57,7 @@ impl Default for Settings {
             teams: Vec::new(),
             kits: Vec::new(),
             tile_entities: Vec::new(),
+            challenge: None,
         }
     }
 }
@@ -101,12 +112,28 @@ impl Setup {
         resolve_items(&mut center["chests"], registry, aliases, false)?;
         resolve_items(&mut center["generators"], registry, aliases, false)?;
         resolve_items(&mut kits, registry, aliases, false)?;
-        let helper_data = json!({
+        let mut helper_data = json!({
             "schema_version": 1, "run_id": run_id, "mode": mode,
             "spawn": settings.spawn, "gamerules": settings.gamerules,
             "teams": settings.teams, "kits": kits, "starter_layout": starter,
             "villagers": villagers, "center": center,
         });
+        if let Some(challenge) = &settings.challenge {
+            let Challenge::ChickenJockey { trigger, opponent } = challenge;
+            if mode != Mode::ChallengeGames
+                || trigger == opponent
+                || [&trigger[1], &opponent[1]]
+                    .into_iter()
+                    .any(|y| !(1..255).contains(y))
+                || !manifest.center.blocks.iter().any(|block| {
+                    &block.pos == trigger
+                        && block.item.id.as_deref() == Some("minecraft:gold_block")
+                })
+            {
+                return Err(Error::Setup("Chicken Jockey requires separate opponent and gold trigger positions in the arena".into()));
+            }
+            helper_data["challenge"] = serde_json::to_value(challenge)?;
+        }
         Ok(Self {
             settings,
             helper_data,

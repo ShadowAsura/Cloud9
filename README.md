@@ -24,6 +24,8 @@ For live indexing, put yt-dlp on PATH and use `python -m scraper scrape --keywor
 
 Contribute reviewed villager trades, chests, kits, and layouts in `community/VIDEO_ID.json`. The catalog applies personal changes from `overrides/VIDEO_ID.json` afterward. [Community setup guide](community/README.md)
 
+The [Chicken Jockey community setup](community/chicken-jockey.md) is a tested solo example that can be added to the catalog offline.
+
 ## M3 · Desktop episode browser
 
 After seeding or scraping the index, run `cargo run -p cloud9-app`. Pass a custom SQLite path after `--` if required. The browser queries one page at a time and loads local thumbnails for visible cards on a background thread. The desktop fonts are distributed under the SIL Open Font License. [IBM Plex](https://github.com/IBM/plex)
@@ -42,7 +44,7 @@ The opt-in runtime smoke test requires a desktop, an internet connection, and `C
 
 Build the helper with Java 8 and Gradle 2.14.1 using `gradle -p helper-mod setupCIWorkspace build`. The run plan expects `helper-mod/build/libs/runner-helper-0.1.0.jar` by default. The first run with a new mod set opens a disposable local Forge client to produce the exact registry. The run plan resolves manifest items before preparing the playable save.
 
-The two built-in template saves are generated locally as needed. To use your own template, put its save folder under `templates/` and set the manifest's `map.template_id` to that folder name. Open the prepared Cloud9 save in Singleplayer. The helper fills chests, builds structures, adds villagers and trades, and applies round settings when the save first loads. **Reset round and launch** restores the pre-launch snapshot after Minecraft has exited and keeps a backup of the prior round.
+The two built-in template saves are generated locally as needed. To use your own template, put its save folder under `templates/` and set the manifest's `map.template_id` to that folder name. The current helper opens the prepared solo save on launch, fills chests, builds structures, adds villagers and trades, and applies round settings. **Reset round and launch** restores the pre-launch snapshot after Minecraft has exited and keeps a backup of the prior round.
 
 Use `aliases/<mod_id>/<version>.json` to map lowercased raw labels or registry IDs to an object with `id` and optional `meta` and `nbt` fields.
 

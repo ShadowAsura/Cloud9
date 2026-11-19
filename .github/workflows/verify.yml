@@ -67,3 +67,4 @@ jobs:
           printf '%s  gradle.zip\n' cfc61eda71f2d12a572822644ce13d2919407595c2aec3e3566d2aab6f97ef39 | sha256sum -c -
           unzip -q gradle.zip
           ./gradle-2.14.1/bin/gradle --no-daemon -p helper-mod setupCIWorkspace build
+          ./gradle-2.14.1/bin/gradle --no-daemon -p helper-mod -Pcloud9Playtest build

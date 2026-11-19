@@ -189,6 +189,12 @@ pub struct ClientRuntime {
     logging_arg: Option<String>,
 }
 
+enum ClientTarget<'a> {
+    Menu,
+    Prepared,
+    Server(&'a str, u16),
+}
+
 impl ClientRuntime {
     pub fn prepare(installer: &Installer, instance: &Instance) -> Result<Self, Error> {
         instance.verify()?;
@@ -238,13 +244,52 @@ impl ClientRuntime {
         to_server: Option<(&str, u16)>,
         log: Sender<LogEvent>,
     ) -> Result<Child, Error> {
+        self.launch_target(
+            instance,
+            account,
+            ram_mib,
+            to_server.map_or(ClientTarget::Menu, |(host, port)| {
+                ClientTarget::Server(host, port)
+            }),
+            log,
+        )
+    }
+
+    /// Open the prepared Cloud 9 save through the installed helper on client startup.
+    pub fn launch_prepared(
+        &self,
+        instance: &Instance,
+        account: &Account,
+        ram_mib: u32,
+        log: Sender<LogEvent>,
+    ) -> Result<Child, Error> {
+        if !instance
+            .root
+            .join("saves/Cloud9/runner_setup.json")
+            .is_file()
+        {
+            return Err(Error::Config(
+                "Missing setup file for the prepared Cloud 9 save".into(),
+            ));
+        }
+        self.launch_target(instance, account, ram_mib, ClientTarget::Prepared, log)
+    }
+
+    fn launch_target(
+        &self,
+        instance: &Instance,
+        account: &Account,
+        ram_mib: u32,
+        target: ClientTarget<'_>,
+        log: Sender<LogEvent>,
+    ) -> Result<Child, Error> {
         instance.verify()?;
         if !(512..=32768).contains(&ram_mib) {
             return Err(Error::Config(
                 "RAM must be between 512 and 32768 MiB".into(),
             ));
         }
-        if to_server.is_some() && !account.authenticated() {
+        if matches!(target, ClientTarget::Server(..)) && !account.authenticated() {
             return Err(Error::Config(
                 "Microsoft sign-in required for joining a server".into(),
             ));
@@ -298,12 +343,15 @@ impl ClientRuntime {
         if let Some(arg) = &self.logging_arg {
             command.arg(arg);
         }
+        if matches!(target, ClientTarget::Prepared) {
+            command.arg("-Dcloud9.openPreparedWorld=true");
+        }
         command
             .arg("-cp")
             .arg(classpath)
             .arg(string(&self.metadata, "mainClass")?)
             .args(args);
-        if let Some((host, port)) = to_server {
+        if let ClientTarget::Server(host, port) = target {
             command
                 .arg("--server")
                 .arg(host)

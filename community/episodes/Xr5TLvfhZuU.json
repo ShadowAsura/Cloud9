@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "episode": {
+    "video_id": "Xr5TLvfhZuU",
+    "title": "Minecraft: CHICKEN JOCKEY CHALLENGE GAMES - Lucky Block Mod - Modded Mini-Game",
+    "url": "https://www.youtube.com/watch?v=Xr5TLvfhZuU",
+    "upload_date": null,
+    "duration": 1665,
+    "thumbnail_url": null,
+    "thumbnail_path": null
+  },
+  "mode": {
+    "value": "challenge_games",
+    "confidence": 0.95,
+    "source": "description",
+    "source_span": "CHALLENGE GAMES",
+    "status": "auto",
+    "alternatives": [
+      {
+        "id": "56b5d0fa0d75179c",
+        "value": "challenge_games",
+        "confidence": 0.85,
+        "source": "description",
+        "source_span": "Challenge Games"
+      }
+    ]
+  },
+  "game": {
+    "mc_version": {
+      "value": "1.8.9",
+      "confidence": 0.35,
+      "source": "manual",
+      "status": "needs_review",
+      "defaulted": true
+    },
+    "loader": {
+      "type": {
+        "value": "forge",
+        "confidence": 0.35,
+        "source": "manual",
+        "status": "needs_review",
+        "defaulted": true
+      },
+      "version": {
+        "value": "11.15.1.2318",
+        "confidence": 0.35,
+        "source": "manual",
+        "status": "needs_review",
+        "defaulted": true
+      }
+    },
+    "java_major": {
+      "value": 8,
+      "confidence": 0.35,
+      "source": "manual",
+      "status": "needs_review",
+      "defaulted": true
+    }
+  },
+  "mods": [
+    {
+      "id": "lucky-block",
+      "role": "lucky",
+      "mod_id": {
+        "value": null,
+        "confidence": 0.35,
+        "source": "manual",
+        "status": "needs_review",
+        "defaulted": true
+      },
+      "display_name": {
+        "value": "Lucky Block",
+        "confidence": 0.85,
+        "source": "description",
+        "source_span": "Lucky Block",
+        "status": "auto"
+      },
+      "aliases": [
+        "Lucky Block",
+        "Lucky Blocks"
+      ],
+      "optional": false,
+      "client_only": false
+    }
+  ],
+  "map": {
+    "template_id": "challenge_games",
+    "overrides": {}
+  },
+  "villagers": [],
+  "center": {
+    "kind": "arena",
+    "blocks": [],
+    "chests": [],
+    "generators": []
+  },
+  "findings": [
+    {
+      "id": "community-setup",
+      "value": "Gameplay setup needs community review",
+      "confidence": 1,
+      "source": "manual",
+      "status": "needs_review"
+    }
+  ],
+  "mob_tags": []
+}
