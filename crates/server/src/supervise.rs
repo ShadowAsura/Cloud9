@@ -264,6 +264,7 @@ fn monitor(
     renewed: &mut Instant,
 ) -> Result<End, Error> {
     let mut latest_diagnostic = None;
+    let mut started = false;
     loop {
         if cancelled.load(Ordering::Relaxed) {
             return Ok(End::Stop);
@@ -286,8 +287,7 @@ fn monitor(
                 && event.line.contains("Done (")
                 && event.line.contains("For help")
             {
-                status.phase = "Running".into();
-                changed = true;
+                started = true;
             }
             if let Some((name, joined)) = player_event(&event.line) {
                 if joined {
@@ -304,6 +304,17 @@ fn monitor(
                     diagnostic.actions.join(" / ")
                 ));
             }
+        }
+        if started
+            && status.phase == "Starting"
+            && server
+                .root
+                .join(crate::WORLD)
+                .join("runner_applied.txt")
+                .is_file()
+        {
+            status.phase = "Running".into();
+            changed = true;
         }
         if changed {
             json_write(&server.root.join(STATUS_FILE), status)?;

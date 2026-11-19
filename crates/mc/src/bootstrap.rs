@@ -19,6 +19,7 @@ pub fn bootstrap_client_registry(
     instance: &Instance,
     registry_root: &Path,
     ram_mib: u32,
+    account: &Account,
 ) -> Result<Registry, Error> {
     let cache = registry_root.join(format!("{}.json", instance.mod_set_hash));
     if cache.is_file() {
@@ -35,8 +36,7 @@ pub fn bootstrap_client_registry(
     }
     let outfile = instance.root.join("registry_dump.json");
     let (logs, receiver) = channel();
-    let dev = Account::local_dev("Cloud9Registry")?;
-    let mut child = runtime.launch(instance, &dev, ram_mib, None, logs)?;
+    let mut child = runtime.launch(instance, account, ram_mib, None, logs)?;
     let result = await_registry(&mut child, &receiver, &outfile, &instance.mod_set_hash);
     if child.try_wait()?.is_none() {
         child.kill()?;

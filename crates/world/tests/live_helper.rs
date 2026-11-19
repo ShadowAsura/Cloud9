@@ -1,6 +1,7 @@
 use cloud9_core::Document;
 use cloud9_mc::{
-    ClientRuntime, Installer, Profile, bootstrap_client_registry, create_instance_with_helper,
+    Account, ClientRuntime, Installer, Profile, bootstrap_client_registry,
+    create_instance_with_helper,
 };
 use cloud9_world::{EpisodeWorld, SetupContext};
 use std::path::PathBuf;
@@ -26,8 +27,13 @@ fn discover_registry_and_prepare_world() -> Result<(), Box<dyn std::error::Error
         &repo.join("helper-mod/build/libs/runner-helper-0.1.0.jar"),
     )?;
     let runtime = ClientRuntime::prepare(&Installer::new(&cache)?, &instance)?;
-    let registry =
-        bootstrap_client_registry(&runtime, &instance, &temp.path().join("registries"), 1536)?;
+    let registry = bootstrap_client_registry(
+        &runtime,
+        &instance,
+        &temp.path().join("registries"),
+        1536,
+        &Account::local_dev("Cloud9Registry")?,
+    )?;
     assert!(registry.items.contains_key("minecraft:gold_ingot"));
     assert!(registry.blocks.contains_key("minecraft:stone"));
     let templates = temp.path().join("templates");

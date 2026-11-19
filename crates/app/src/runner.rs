@@ -284,8 +284,13 @@ impl Runner {
                 ));
                 let runtime = ClientRuntime::prepare(&Installer::new(&cache)?, &instance)?;
                 let _ = sender.send(Update::Notice("Checking the item registry".into()));
-                let registry =
-                    bootstrap_client_registry(&runtime, &instance, &cache.join("registries"), ram)?;
+                let registry = bootstrap_client_registry(
+                    &runtime,
+                    &instance,
+                    &cache.join("registries"),
+                    ram,
+                    &account,
+                )?;
                 let round = cloud9_world::EpisodeWorld::open(
                     &document,
                     instance.root.join("saves/Cloud9"),
