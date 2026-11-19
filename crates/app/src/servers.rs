@@ -114,8 +114,8 @@ impl Servers {
 
     pub fn view(&mut self, ui: &mut egui::Ui, runner: &Runner) -> Option<PathBuf> {
         let mut import = None;
-        ui.heading(RichText::new("Servers").size(32.0));
-        ui.add_space(6.0);
+        ui.heading(RichText::new("Servers").size(30.0));
+        ui.add_space(12.0);
         if !self.message.is_empty() {
             ui.colored_label(if self.error { ERROR } else { MUTED }, &self.message);
             ui.add_space(6.0);

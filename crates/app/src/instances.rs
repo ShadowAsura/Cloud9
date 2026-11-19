@@ -71,14 +71,14 @@ impl Instances {
         }
 
         ui.horizontal(|ui| {
-            ui.heading(RichText::new("Instances").size(32.0));
+            ui.heading(RichText::new("Instances").size(30.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Reload").clicked() {
                     self.reload();
                 }
             });
         });
-        ui.add_space(10.0);
+        ui.add_space(12.0);
 
         if let Some(error) = &self.error {
             ui.colored_label(ERROR, error);

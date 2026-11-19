@@ -524,7 +524,7 @@ impl eframe::App for Browser {
                         );
                     });
                 });
-                ui.add_space(14.0);
+                ui.add_space(12.0);
                 let mut changed = ui
                     .add_sized(
                         [ui.available_width(), 38.0],

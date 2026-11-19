@@ -666,8 +666,8 @@ impl Runner {
     }
 
     pub fn running(&mut self, ui: &mut egui::Ui) -> bool {
-        ui.heading(RichText::new("Running").size(32.0));
-        ui.add_space(6.0);
+        ui.heading(RichText::new("Running").size(30.0));
+        ui.add_space(12.0);
         self.status(ui);
         ui.add_space(8.0);
 
