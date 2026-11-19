@@ -83,13 +83,13 @@ fn set_theme(ctx: &egui::Context) {
     }
     ctx.set_fonts(fonts);
     ctx.style_mut(|style| {
-        style.spacing.item_spacing = vec2(10.0, 8.0);
-        style.spacing.button_padding = vec2(14.0, 8.0);
+        style.spacing.item_spacing = vec2(10.0_f32, 8.0_f32);
+        style.spacing.button_padding = vec2(14.0_f32, 8.0_f32);
         style.spacing.menu_margin = egui::Margin {
-            left: 10.0,
-            right: 10.0,
-            top: 8.0,
-            bottom: 8.0,
+            left: 10.0_f32,
+            right: 10.0_f32,
+            top: 8.0_f32,
+            bottom: 8.0_f32,
         };
         style
             .text_styles
@@ -214,16 +214,16 @@ impl Thumbnails {
             };
             let galley = painter.layout_no_wrap(text, FontId::monospace(12.0), TEXT);
             let badge = egui::Rect::from_min_size(
-                rect.max - vec2(8.0, 8.0) - galley.size() - vec2(10.0, 6.0),
-                galley.size() + vec2(10.0, 6.0),
+                rect.max - vec2(8.0_f32, 8.0_f32) - galley.size() - vec2(10.0_f32, 6.0_f32),
+                galley.size() + vec2(10.0_f32, 6.0_f32),
             );
             painter.rect_filled(badge, 2.0, Color32::from_black_alpha(215));
-            painter.galley(badge.min + vec2(5.0, 3.0), galley, TEXT);
+            painter.galley(badge.min + vec2(5.0_f32, 3.0_f32), galley, TEXT);
         }
         if response.hovered() {
             painter.rect_stroke(
                 rect,
-                2.0,
+                2.0_f32,
                 Stroke::new(1.5_f32, ACCENT),
                 egui::StrokeKind::Inside,
             );
@@ -427,7 +427,7 @@ impl eframe::App for Browser {
                             .size(20.0),
                     );
                     ui.separator();
-                    ui.spacing_mut().item_spacing = vec2(16.0, 0.0);
+                    ui.spacing_mut().item_spacing = vec2(16.0_f32, 0.0_f32);
                     for (screen, label) in [
                         (Screen::Episodes, "Episodes"),
                         (Screen::Instances, "Instances"),
@@ -521,7 +521,7 @@ impl eframe::App for Browser {
                     )
                     .changed();
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(10.0, 0.0);
+                    ui.spacing_mut().item_spacing = vec2(10.0_f32, 0.0_f32);
                     let previous = self.filters.mode.clone();
                     egui::ComboBox::from_id_salt("mode")
                         .selected_text(RichText::new(mode_label(&self.filters.mode)).small())
@@ -690,7 +690,7 @@ fn render_card(
                     );
                     title.wrap.max_rows = 2;
                     ui.allocate_ui_with_layout(
-                        vec2(inner_width - 24.0, 48.0),
+                        vec2(inner_width - 24.0_f32, 48.0_f32),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             ui.label(title).on_hover_text(&card.title);

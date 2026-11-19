@@ -586,15 +586,15 @@ impl Runner {
                         ui.add_space(4.0);
                     }
                     ui.add_enabled_ui(self.saved.is_none(), |ui| {
-                        form_row(ui, "Local mod directory", &mut self.supplied, None,
+                        Self::form_row(ui, "Local mod directory", &mut self.supplied, None,
                             matches!(self.action_focus, Some("Locate jar" | "Fetch")));
                         ui.add_space(4.0);
-                        form_row(ui, "Java executable", &mut self.java, Some("Auto-detect"),
+                        Self::form_row(ui, "Java executable", &mut self.java, Some("Auto-detect"),
                             self.action_focus == Some("Locate Java"));
                         ui.add_space(4.0);
-                        form_row(ui, "Runner helper JAR", &mut self.helper, None, false);
+                        Self::form_row(ui, "Runner helper JAR", &mut self.helper, None, false);
                         ui.add_space(4.0);
-                        form_row(ui, "Templates", &mut self.template_root, None, false);
+                        Self::form_row(ui, "Templates", &mut self.template_root, None, false);
                     });
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
@@ -717,16 +717,16 @@ impl Runner {
                 ui.colored_label(ACCENT, &message);
                 ui.horizontal_wrapped(|ui| {
                     for action in diagnostic.actions {
-                        if ui.button(action).clicked() {
-                            if action == "Ignore" {
+                        if ui.button(*action).clicked() {
+                            if *action == "Ignore" {
                                 self.ignored_message = Some(message.clone());
                             } else {
-                                self.action_focus = Some(action);
-                                if action == "Edit alias" {
+                                self.action_focus = Some(*action);
+                                if *action == "Edit alias" {
                                     self.status = "Edit alias: update aliases/<mod_id>/<version>.json, then retry.".into();
                                     self.error = true;
                                 }
-                                if action == "Fetch" {
+                                if *action == "Fetch" {
                                     self.status = "Use the mod source links and place the matching jars in the local mod directory.".into();
                                     self.error = false;
                                 }

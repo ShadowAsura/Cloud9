@@ -103,7 +103,7 @@ impl Instances {
                     .inner_margin(egui::Margin::same(14.0_f32))
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
-                        ui.spacing_mut().item_spacing = vec2(10.0, 8.0);
+                        ui.spacing_mut().item_spacing = vec2(10.0_f32, 8.0_f32);
 
                         ui.horizontal(|ui| {
                             ui.vertical(|ui| {
