@@ -36,7 +36,9 @@ The **Instances** screen reopens saved episodes, shows their locked Java and mod
 
 Choose **Run plan** on an episode card, point it at your local mod directory, and select a Java 8 executable or set `JAVA8_HOME`. The launcher downloads hashed Minecraft and Forge artifacts to the ignored cache and copies verified user-supplied mods into a fresh instance. If the Forge version JSON exists without its JAR, preparation repairs the installation.
 
-For Microsoft sign-in, supply an authorized public-client ID when prompted or set `CLOUD9_MICROSOFT_CLIENT_ID`. Cloud 9 keeps game credentials in memory. Local development mode is an explicit setting for local testing. Minecraft output and diagnostics appear under **Running**. [Microsoft device sign-in](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)
+Players use **Sign in with Microsoft** in approved builds. Maintainers configure the approved Cloud 9 public client ID with `CLOUD9_MICROSOFT_CLIENT_ID` at build time or as a repository variable for packaged builds. Cloud 9 keeps game credentials in memory. **Advanced settings** includes the explicit local development profile for testing. [Minecraft application ID review](https://aka.ms/mce-reviewappid)
+
+Open an episode from its thumbnail to see its Minecraft version, map, and mods. **Download pinned mods** downloads verified CurseForge or Modrinth release files into the local cache. **Play** also downloads missing pinned jars before creating the isolated instance. Mods without a verified download can be supplied in `local-mods/`.
 
 The opt-in runtime smoke test requires a desktop, an internet connection, and `CLOUD9_SMOKE_JAVA` pointing to Java 8. Run `cargo test -p cloud9-mc --test live_client -- --ignored`.
 

@@ -1,12 +1,14 @@
 use crate::{Error, atomically_write, safe_component};
-use cloud9_core::{Manifest, ModRole};
+use cloud9_core::{FileHint, Manifest, Mod, ModRole};
+use reqwest::{Url, blocking::Client, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
-    io,
+    io::{self, Read},
     path::{Path, PathBuf},
+    time::Duration,
 };
 use zip::ZipArchive;
 
@@ -145,6 +147,155 @@ fn sha256(path: &Path) -> Result<String, Error> {
     Ok(format!("{:x}", sha.finalize()))
 }
 
+fn jar_filename(name: &str) -> bool {
+    !name.contains(['/', '\\', ':', '%'])
+        && !name.chars().any(char::is_control)
+        && name.to_ascii_lowercase().ends_with(".jar")
+}
+
+fn official_mod_file(url: &Url) -> bool {
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port_or_known_default() != Some(443)
+    {
+        return false;
+    }
+    let segments: Vec<_> = url.path_segments().into_iter().flatten().collect();
+    match (url.host_str(), segments.as_slice()) {
+        (Some("cdn.modrinth.com"), ["data", project, "versions", version, file]) => {
+            !project.is_empty()
+                && !version.is_empty()
+                && file.to_ascii_lowercase().ends_with(".jar")
+        }
+        (
+            Some("edge.forgecdn.net" | "media.forgecdn.net" | "mediafilez.forgecdn.net"),
+            ["files", major, minor, file],
+        ) => {
+            !major.is_empty()
+                && major.bytes().all(|b| b.is_ascii_digit())
+                && minor.len() == 3
+                && minor.bytes().all(|b| b.is_ascii_digit())
+                && file.to_ascii_lowercase().ends_with(".jar")
+        }
+        _ => false,
+    }
+}
+
+fn mod_download(hint: &FileHint) -> Option<(Url, String)> {
+    let hash = hint.sha256.as_ref()?;
+    if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let mut url = Url::parse(hint.url.as_deref()?).ok()?;
+    if !official_mod_file(&url) {
+        let segments: Vec<_> = url.path_segments()?.collect();
+        let ["minecraft", "mc-mods", _, "files", file] = segments.as_slice() else {
+            return None;
+        };
+        let filename = hint.filename.as_deref().filter(|name| jar_filename(name))?;
+        if !matches!(
+            url.host_str(),
+            Some("www.curseforge.com" | "curseforge.com")
+        ) || url.scheme() != "https"
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.port_or_known_default() != Some(443)
+        {
+            return None;
+        }
+        let id: u64 = file.parse().ok()?;
+        let major = (id / 1000).to_string();
+        let minor = format!("{:03}", id % 1000);
+        url = Url::parse("https://edge.forgecdn.net").ok()?;
+        url.path_segments_mut()
+            .ok()?
+            .extend(["files", &major, &minor, filename]);
+    }
+    Some((url, hash.to_ascii_lowercase()))
+}
+
+pub fn has_mod_downloads(manifest: &Manifest) -> bool {
+    manifest
+        .mods
+        .iter()
+        .any(|record| record.file_hint.as_ref().and_then(mod_download).is_some())
+}
+
+/// Download reviewed release files from supported providers and publish only
+/// artifacts that match the manifest hash and Forge mod metadata.
+pub fn download_pinned_mods(manifest: &Manifest, cache: &Path) -> Result<usize, Error> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(90))
+        .redirect(Policy::custom(|attempt| {
+            if attempt.previous().len() < 3 && official_mod_file(attempt.url()) {
+                attempt.follow()
+            } else {
+                attempt.error("unapproved mod download redirect")
+            }
+        }))
+        .build()?;
+    fs::create_dir_all(cache)?;
+    let mut available = 0;
+    for record in &manifest.mods {
+        let Some((url, hash)) = record.file_hint.as_ref().and_then(mod_download) else {
+            continue;
+        };
+        let destination = cache.join(format!("{hash}.jar"));
+        if destination.is_file() && sha256(&destination)? == hash {
+            verify_candidate(record, &destination)?;
+        } else {
+            const MAX_BYTES: u64 = 128 * 1024 * 1024;
+            let response = client.get(url).send()?.error_for_status()?;
+            let mut staged = tempfile::NamedTempFile::new_in(cache)?;
+            if io::copy(&mut response.take(MAX_BYTES + 1), staged.as_file_mut())? > MAX_BYTES {
+                return Err(Error::Config(format!(
+                    "{} exceeded the mod download size limit",
+                    record.display_name.value
+                )));
+            }
+            if sha256(staged.path())? != hash {
+                return Err(Error::Hash(destination));
+            }
+            verify_candidate(record, staged.path())?;
+            staged.as_file().sync_all()?;
+            staged.persist(&destination).map_err(|error| error.error)?;
+        }
+        available += 1;
+    }
+    Ok(available)
+}
+
+fn match_record(record: &Mod, candidate: &Candidate) -> bool {
+    let range = record
+        .version_range
+        .as_ref()
+        .and_then(|value| value.value.as_deref());
+    record.mod_id.value.as_ref().map_or_else(
+        || {
+            record
+                .aliases
+                .iter()
+                .chain([&record.display_name.value])
+                .any(|alias| alias.eq_ignore_ascii_case(&candidate.display_name))
+        },
+        |id| id.eq_ignore_ascii_case(&candidate.id),
+    ) && version_matches(&candidate.version, range)
+}
+
+fn verify_candidate(record: &Mod, path: &Path) -> Result<(), Error> {
+    let mut entries = Vec::new();
+    read_metadata(path, &mut entries)?;
+    if entries.iter().any(|entry| match_record(record, entry)) {
+        Ok(())
+    } else {
+        Err(Error::Config(format!(
+            "{} did not match the pinned Forge mod metadata",
+            record.display_name.value
+        )))
+    }
+}
+
 pub fn resolve_mods(
     manifest: &Manifest,
     supplied: &Path,
@@ -184,26 +335,13 @@ pub fn resolve_mods(
     }
     let mut resolved = Vec::new();
     for record in selected {
-        let range = record
-            .version_range
-            .as_ref()
-            .and_then(|value| value.value.as_deref());
         let expected = record
             .file_hint
             .as_ref()
             .and_then(|hint| hint.sha256.as_deref());
-        let matches = candidates.iter().filter(|candidate| {
-            record.mod_id.value.as_ref().map_or_else(
-                || {
-                    record
-                        .aliases
-                        .iter()
-                        .chain([&record.display_name.value])
-                        .any(|alias| alias.eq_ignore_ascii_case(&candidate.display_name))
-                },
-                |id| id.eq_ignore_ascii_case(&candidate.id),
-            ) && version_matches(&candidate.version, range)
-        });
+        let matches = candidates
+            .iter()
+            .filter(|candidate| match_record(record, candidate));
         let mut verified = Vec::new();
         for candidate in matches {
             let hash = sha256(&candidate.path)?;
@@ -380,5 +518,36 @@ mod tests {
         assert!(verify_mods(&mods, &stage).is_err());
         assert!(cache.join(jar_name(&mods[0])?).is_file());
         Ok(())
+    }
+}
+#[cfg(test)]
+mod download_urls {
+    use super::*;
+
+    #[test]
+    fn only_exact_provider_release_files_are_downloaded() {
+        let mut hint = FileHint {
+            filename: Some("example mod.jar".into()),
+            sha256: Some("A".repeat(64)),
+            url: Some("https://www.curseforge.com/minecraft/mc-mods/example/files/3652007".into()),
+            extensions: Default::default(),
+        };
+        let (url, hash) = mod_download(&hint).expect("pinned CurseForge release");
+        assert_eq!(
+            url.as_str(),
+            "https://edge.forgecdn.net/files/3652/007/example%20mod.jar"
+        );
+        assert_eq!(hash, "a".repeat(64));
+        hint.url = Some("https://cdn.modrinth.com/data/base/versions/version/file.jar".into());
+        assert!(mod_download(&hint).is_some());
+        hint.url =
+            Some("https://cdn.modrinth.com.example.com/data/base/versions/version/file.jar".into());
+        assert!(mod_download(&hint).is_none());
+        hint.url = Some("https://cdn.modrinth.com/catalog.jar".into());
+        assert!(mod_download(&hint).is_none());
+        hint.url = Some("https://mediafilez.forgecdn.net/files/3652/657/file.jar".into());
+        assert!(mod_download(&hint).is_some());
+        hint.sha256 = None;
+        assert!(mod_download(&hint).is_none());
     }
 }

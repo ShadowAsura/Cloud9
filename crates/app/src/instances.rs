@@ -74,7 +74,7 @@ impl Instances {
                                 ui.label(RichText::new(&card.profile).monospace().color(MUTED));
                                 ui.colored_label(ACCENT, card.state);
                             });
-                            if ui.button("Run plan").clicked() {
+                            if ui.button("Open").clicked() {
                                 selection = Some(card.path.clone());
                             }
                         });

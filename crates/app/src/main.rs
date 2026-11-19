@@ -5,7 +5,7 @@ mod servers;
 use cloud9_core::catalog::{Catalog, EpisodeCard, Filters};
 use eframe::egui::{
     self, Color32, ColorImage, CornerRadius, FontData, FontFamily, FontId, Frame, RichText, Stroke,
-    TextStyle, TextureHandle, TextureOptions, Vec2, vec2,
+    TextStyle, TextureHandle, TextureOptions, pos2, vec2,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -151,12 +151,20 @@ impl Thumbnails {
         }
     }
 
-    fn draw(&mut self, ui: &mut egui::Ui, path: Option<&str>) {
-        let size = vec2(146.0, 82.0);
+    fn draw(&mut self, ui: &mut egui::Ui, card: &EpisodeCard, width: f32) -> egui::Response {
+        let (rect, response) =
+            ui.allocate_exact_size(vec2(width, width * 9.0 / 16.0), egui::Sense::click());
+        let path = card.thumbnail_path.as_deref();
+        let painter = ui.painter();
+        painter.rect_filled(rect, 2, GROUND);
         if let Some(path) = path {
             if let Some(Some(texture)) = self.images.get(path) {
-                ui.add(egui::Image::new(texture).fit_to_exact_size(size));
-                return;
+                painter.image(
+                    texture.id(),
+                    rect,
+                    thumbnail_uv(texture.aspect_ratio(), rect.aspect_ratio()),
+                    Color32::WHITE,
+                );
             }
             if !self.images.contains_key(path)
                 && !self.pending.contains(path)
@@ -165,21 +173,57 @@ impl Thumbnails {
                 self.pending.insert(path.to_owned());
             }
         }
-        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-        ui.painter().rect_filled(rect, 2, GROUND);
-        let label = if path.is_some_and(|path| self.pending.contains(path)) {
-            "Loading thumbnail"
-        } else {
-            "No thumbnail"
-        };
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            label,
-            FontId::monospace(11.0),
-            MUTED,
-        );
+        if !path.is_some_and(|path| matches!(self.images.get(path), Some(Some(_)))) {
+            let label = if path.is_some_and(|path| self.pending.contains(path)) {
+                "Loading thumbnail"
+            } else {
+                "No thumbnail"
+            };
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                label,
+                FontId::monospace(12.0),
+                MUTED,
+            );
+        }
+        if let Some(seconds) = card.duration {
+            let text = if seconds >= 3600 {
+                format!(
+                    "{}:{:02}:{:02}",
+                    seconds / 3600,
+                    seconds / 60 % 60,
+                    seconds % 60
+                )
+            } else {
+                format!("{}:{:02}", seconds / 60, seconds % 60)
+            };
+            let galley = painter.layout_no_wrap(text, FontId::monospace(12.0), TEXT);
+            let badge = egui::Rect::from_min_size(
+                rect.max - vec2(8.0, 8.0) - galley.size() - vec2(10.0, 6.0),
+                galley.size() + vec2(10.0, 6.0),
+            );
+            painter.rect_filled(badge, 2, Color32::from_black_alpha(215));
+            painter.galley(badge.min + vec2(5.0, 3.0), galley, TEXT);
+        }
+        if response.hovered() {
+            painter.rect_stroke(
+                rect,
+                2,
+                Stroke::new(1.0_f32, ACCENT),
+                egui::StrokeKind::Inside,
+            );
+        }
+        response
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .on_hover_text(&card.title)
     }
+}
+
+fn thumbnail_uv(source: f32, destination: f32) -> egui::Rect {
+    let inset_x = (1.0 - destination / source).max(0.0) / 2.0;
+    let inset_y = (1.0 - source / destination).max(0.0) / 2.0;
+    egui::Rect::from_min_max(pos2(inset_x, inset_y), pos2(1.0 - inset_x, 1.0 - inset_y))
 }
 
 fn decode_thumbnail(path: &Path) -> Option<ColorImage> {
@@ -192,7 +236,7 @@ fn decode_thumbnail(path: &Path) -> Option<ColorImage> {
     limits.max_image_height = Some(4096);
     limits.max_alloc = Some(64 * 1024 * 1024);
     reader.limits(limits);
-    let image = reader.decode().ok()?.thumbnail(292, 164).to_rgba8();
+    let image = reader.decode().ok()?.thumbnail(512, 384).to_rgba8();
     Some(ColorImage::from_rgba_unmultiplied(
         [image.width() as usize, image.height() as usize],
         &image,
@@ -203,13 +247,13 @@ fn decode_thumbnail(path: &Path) -> Option<ColorImage> {
 enum Screen {
     Episodes,
     Instances,
-    RunPlan,
     Running,
     Servers,
 }
 
 struct Browser {
     screen: Screen,
+    play_dialog: bool,
     runner: runner::Runner,
     instances: instances::Instances,
     servers: servers::Servers,
@@ -234,12 +278,13 @@ impl Browser {
             .ok_or_else(|| "Catalog unavailable".into())
             .and_then(|catalog| catalog.document(id));
         self.runner.select(document);
-        self.screen = Screen::RunPlan;
+        self.play_dialog = true;
     }
 
     fn new(path: PathBuf, ctx: egui::Context) -> Self {
         let mut browser = Self {
             screen: Screen::Episodes,
+            play_dialog: false,
             runner: runner::Runner::new(),
             instances: instances::Instances::default(),
             servers: servers::Servers::new(),
@@ -315,6 +360,7 @@ impl eframe::App for Browser {
         self.thumbs.update(ctx);
         if self.runner.poll(ctx) {
             self.screen = Screen::Running;
+            self.play_dialog = false;
         }
         self.servers.poll(ctx);
         egui::TopBottomPanel::top("header")
@@ -337,7 +383,6 @@ impl eframe::App for Browser {
                     for (screen, label) in [
                         (Screen::Episodes, "Episodes"),
                         (Screen::Instances, "Instances"),
-                        (Screen::RunPlan, "Run plan"),
                         (Screen::Running, "Running"),
                         (Screen::Servers, "Servers"),
                     ] {
@@ -352,17 +397,13 @@ impl eframe::App for Browser {
                     Screen::Instances => {
                         if let Some(path) = self.instances.view(ui) {
                             self.runner.select_saved(path);
-                            self.screen = Screen::RunPlan;
+                            self.play_dialog = true;
                         }
-                        return;
-                    }
-                    Screen::RunPlan => {
-                        self.runner.plan(ui);
                         return;
                     }
                     Screen::Running => {
                         if self.runner.running(ui) {
-                            self.screen = Screen::RunPlan;
+                            self.play_dialog = true;
                         }
                         return;
                     }
@@ -377,7 +418,7 @@ impl eframe::App for Browser {
                                 Ok((matchup.pin(&document).map_err(|error| error.to_string())?, matchup))
                             })();
                             self.runner.import(imported);
-                            self.screen = Screen::RunPlan;
+                            self.play_dialog = true;
                         }
                         return;
                     }
@@ -473,16 +514,51 @@ impl eframe::App for Browser {
                 if std::mem::take(&mut self.reset_scroll) {
                     scroll = scroll.vertical_scroll_offset(0.0);
                 }
-                scroll.show_rows(ui, 108.0, self.cards.len(), |ui, rows| {
-                    for index in rows {
-                        let card = &self.cards[index];
-                        if render_card(ui, card, &mut self.thumbs) {
-                            let id = card.video_id.clone();
-                            self.select_episode(&id);
-                        }
+                let gap = 14.0;
+                let width = ui.available_width() - 12.0;
+                let columns = gallery_columns(width, gap);
+                let card_width = (width - gap * (columns - 1) as f32) / columns as f32;
+                let row_height = card_width * 9.0 / 16.0 + 144.0;
+                let mut selected = None;
+                scroll.show_rows(ui, row_height, self.cards.len().div_ceil(columns), |ui, rows| {
+                    for row in rows {
+                        let start = row * columns;
+                        ui.horizontal_top(|ui| {
+                            ui.spacing_mut().item_spacing.x = gap;
+                            ui.set_min_height(row_height);
+                            for card in self.cards[start..(start + columns).min(self.cards.len())].iter() {
+                                if render_card(ui, card, &mut self.thumbs, card_width) {
+                                    selected = Some(card.video_id.clone());
+                                }
+                            }
+                        });
                     }
                 });
+                if let Some(id) = selected {
+                    self.select_episode(&id);
+                }
             });
+        if self.play_dialog {
+            let dialog = egui::Modal::new(egui::Id::new("play-episode")).show(ctx, |ui| {
+                ui.set_width(492.0_f32.min(ctx.screen_rect().width() - 48.0));
+                let close = ui
+                    .horizontal(|ui| {
+                        ui.heading("Episode setup");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.small_button("Close").clicked()
+                        })
+                        .inner
+                    })
+                    .inner;
+                egui::ScrollArea::vertical()
+                    .max_height((ctx.screen_rect().height() - 120.0).max(100.0))
+                    .show(ui, |ui| self.runner.plan(ui));
+                close
+            });
+            if dialog.inner || dialog.should_close() {
+                self.play_dialog = false;
+            }
+        }
     }
 }
 
@@ -495,58 +571,109 @@ fn mode_label(mode: &str) -> &str {
     }
 }
 
-fn render_card(ui: &mut egui::Ui, card: &EpisodeCard, thumbnails: &mut Thumbnails) -> bool {
-    let mut selected = false;
+fn gallery_columns(width: f32, gap: f32) -> usize {
+    (((width + gap) / (248.0 + gap)).floor() as usize).clamp(1, 4)
+}
+
+fn render_card(
+    ui: &mut egui::Ui,
+    card: &EpisodeCard,
+    thumbnails: &mut Thumbnails,
+    width: f32,
+) -> bool {
     Frame::new()
         .fill(PANEL)
         .stroke(Stroke::new(1.0_f32, BORDER))
         .corner_radius(2)
-        .inner_margin(12)
         .show(ui, |ui| {
-            ui.set_min_size(Vec2::new(ui.available_width(), 82.0));
-            ui.horizontal(|ui| {
-                thumbnails.draw(ui, card.thumbnail_path.as_deref());
-                ui.add_space(4.0);
-                ui.vertical(|ui| {
+            let width = width - 2.0;
+            ui.set_width(width);
+            ui.spacing_mut().item_spacing.y = 0.0;
+            let opened = thumbnails.draw(ui, card, width).clicked();
+            Frame::new()
+                .inner_margin(egui::Margin::same(10))
+                .show(ui, |ui| {
+                    let width = width - 20.0;
+                    ui.set_width(width);
+                    ui.spacing_mut().item_spacing.y = 5.0;
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new(mode_label(&card.mode))
-                                .monospace()
                                 .color(ACCENT)
-                                .size(12.0),
+                                .size(11.0),
                         );
                         ui.label(
                             RichText::new(&card.version)
                                 .monospace()
                                 .color(MUTED)
-                                .size(12.0),
+                                .size(11.0),
                         );
-                        let (status, color) = if card.review_count == 0 {
-                            ("Indexed".to_owned(), OK)
-                        } else {
-                            (format!("Needs review ({})", card.review_count), ACCENT)
-                        };
-                        ui.label(RichText::new(status).size(12.0).color(color));
                     });
-                    ui.add(
-                        egui::Label::new(RichText::new(&card.title).size(18.0).strong()).truncate(),
+                    let mut title = egui::text::LayoutJob::simple(
+                        card.title.clone(),
+                        FontId::proportional(17.0),
+                        TEXT,
+                        width,
                     );
-                    ui.horizontal(|ui| {
-                        if !card.tags.is_empty() {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(card.tags.join("  /  "))
-                                        .color(MUTED)
-                                        .size(13.0),
-                                )
-                                .truncate(),
-                            );
-                        }
-                        ui.hyperlink_to("Source", &card.url);
-                        selected = ui.small_button("Run plan").clicked();
-                    });
-                });
-            });
-        });
-    selected
+                    title.wrap.max_rows = 2;
+                    ui.allocate_ui_with_layout(
+                        vec2(width, 44.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.label(title).on_hover_text(&card.title);
+                        },
+                    );
+                    let (status, color) = if card.community_setup {
+                        ("Community setup".to_owned(), OK)
+                    } else if card.review_count > 0 {
+                        (format!("Needs review ({})", card.review_count), MUTED)
+                    } else {
+                        ("Indexed".into(), MUTED)
+                    };
+                    let tags = if card.tags.is_empty() {
+                        status
+                    } else {
+                        format!("{status}  /  {}", card.tags.join(", "))
+                    };
+                    ui.add(
+                        egui::Label::new(RichText::new(tags).size(12.0).color(color)).truncate(),
+                    );
+                    let clicked = ui
+                        .horizontal(|ui| {
+                            let clicked = ui
+                                .small_button(if card.community_setup {
+                                    "Play"
+                                } else {
+                                    "Details"
+                                })
+                                .clicked();
+                            ui.hyperlink_to("Watch episode", &card.url);
+                            clicked
+                        })
+                        .inner;
+                    opened || clicked
+                })
+                .inner
+        })
+        .inner
+}
+
+#[cfg(test)]
+mod gallery_tests {
+    use super::*;
+
+    #[test]
+    fn grid_adapts_to_window_width() {
+        assert_eq!(gallery_columns(245.0, 14.0), 1);
+        assert_eq!(gallery_columns(690.0, 14.0), 2);
+        assert_eq!(gallery_columns(1010.0, 14.0), 3);
+        assert_eq!(gallery_columns(1600.0, 14.0), 4);
+    }
+
+    #[test]
+    fn thumbnail_crops_without_stretching() {
+        let uv = thumbnail_uv(4.0 / 3.0, 16.0 / 9.0);
+        assert_eq!(uv.width(), 1.0);
+        assert!((uv.height() - 0.75).abs() < 0.01);
+    }
 }

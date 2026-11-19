@@ -1,8 +1,9 @@
-use crate::{ACCENT, ERROR, GROUND, MUTED, OK, PANEL, TEXT};
+use crate::{ACCENT, ERROR, GROUND, MUTED, OK, TEXT};
 use cloud9_core::Document;
 use cloud9_mc::{
     Account, ClientRuntime, Installer, Instance, Level, LogEvent, MicrosoftSignIn, Profile,
-    bootstrap_client_registry, create_instance, create_instance_with_helper,
+    bootstrap_client_registry, create_instance, create_instance_with_helper, download_pinned_mods,
+    has_mod_downloads, resolve_mods,
 };
 use eframe::egui::{self, Frame, RichText};
 use std::{
@@ -22,6 +23,7 @@ use std::{
 enum Update {
     Verification(String, String),
     SignedIn(Account),
+    ModsReady(usize),
     Error(String),
     Notice(String),
     Launched(Child, PathBuf, Receiver<LogEvent>, std::fs::File),
@@ -65,7 +67,10 @@ impl Runner {
             selected: None,
             supplied: "local-mods".into(),
             java: String::new(),
-            client_id: std::env::var("CLOUD9_MICROSOFT_CLIENT_ID").unwrap_or_default(),
+            client_id: std::env::var("CLOUD9_MICROSOFT_CLIENT_ID")
+                .ok()
+                .or_else(|| option_env!("CLOUD9_MICROSOFT_CLIENT_ID").map(str::to_owned))
+                .unwrap_or_default(),
             dev: false,
             account: None,
             helper: "helper-mod/build/libs/runner-helper-0.1.0.jar".into(),
@@ -103,6 +108,10 @@ impl Runner {
                     self.verification = None;
                     self.pending = false;
                     self.status = "Microsoft account connected".into();
+                }
+                Update::ModsReady(count) => {
+                    self.pending = false;
+                    self.status = format!("{count} pinned mod files verified");
                 }
                 Update::Error(error) => {
                     self.error = true;
@@ -269,6 +278,17 @@ impl Runner {
             let result = (|| -> Result<_, Box<dyn std::error::Error>> {
                 let mut document = document;
                 let cache = PathBuf::from(".cache/minecraft");
+                if saved.is_none() && has_mod_downloads(document.manifest()) {
+                    let mods = cache.join("mods");
+                    if matches!(resolve_mods(document.manifest(), &supplied, &mods, false),
+                        Err(cloud9_mc::Error::Config(message)) if message.starts_with("Locate jar"))
+                    {
+                        let _ = sender.send(Update::Notice(
+                            "Downloading and verifying pinned mods…".into(),
+                        ));
+                        download_pinned_mods(document.manifest(), &mods)?;
+                    }
+                }
                 if let Some(matchup) = &matchup {
                     let profile = Profile::selected()?;
                     let instance = create_instance(
@@ -365,8 +385,27 @@ impl Runner {
         });
     }
 
+    fn download_mods(&mut self) {
+        let Some(document) = self.selected.clone() else {
+            return;
+        };
+        self.pending = true;
+        self.error = false;
+        self.status = "Downloading and verifying pinned mods…".into();
+        let sender = self.send.clone();
+        std::thread::spawn(move || {
+            let result = download_pinned_mods(
+                document.manifest(),
+                std::path::Path::new(".cache/minecraft/mods"),
+            );
+            let _ = sender.send(match result {
+                Ok(count) => Update::ModsReady(count),
+                Err(error) => Update::Error(error.to_string()),
+            });
+        });
+    }
+
     pub fn plan(&mut self, ui: &mut egui::Ui) {
-        ui.heading(RichText::new("Run plan").size(31.0));
         ui.add_space(8.0);
         if let Some(document) = &self.selected {
             let episode = document.manifest();
@@ -375,7 +414,7 @@ impl Runner {
             ui.colored_label(
                 MUTED,
                 format!(
-                    "Minecraft {} · {} · Java {}",
+                    "Minecraft {} · Forge {} · Java {}",
                     episode.game.mc_version.value,
                     episode
                         .game
@@ -391,6 +430,16 @@ impl Runner {
                         .map_or_else(|| "pending review".to_owned(), |major| major.to_string())
                 ),
             );
+            let downloadable = has_mod_downloads(episode);
+            let map = match episode.map.template_id.as_str() {
+                "challenge_games" => "Cloud 9 Arena",
+                "lucky_block_bedwars" => "Cloud 9 Islands",
+                name => name,
+            };
+            ui.horizontal(|ui| {
+                ui.colored_label(MUTED, "Map");
+                ui.label(map);
+            });
             for jar in &episode.mods {
                 ui.horizontal(|ui| {
                     ui.label(&jar.display_name.value);
@@ -404,55 +453,13 @@ impl Runner {
                 ui.colored_label(ACCENT, "Community round");
                 ui.label("Open Lucky Blocks, trade with the Arena Trader, then right-click the gold block to fight.");
             }
-            ui.separator();
-            if let Some(path) = &self.saved {
-                ui.label(format!("Instance folder {} ", path.display()));
-                if let Some(instance) = &self.saved_lock {
-                    ui.colored_label(
-                        MUTED,
-                        format!("Locked Java executable {}", instance.java.display()),
-                    );
-                    for locked in &instance.mods {
-                        ui.monospace(format!("{} {}", locked.mod_id, locked.version));
-                    }
-                }
-            }
-            ui.add_enabled_ui(self.saved.is_none(), |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Local mod directory");
-                    let input = ui.text_edit_singleline(&mut self.supplied);
-                    if matches!(self.action_focus, Some("Locate jar" | "Fetch")) {
-                        input.request_focus();
-                        self.action_focus = None;
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Java executable");
-                    let input =
-                        ui.add(egui::TextEdit::singleline(&mut self.java).hint_text("Auto-detect"));
-                    if self.action_focus == Some("Locate Java") {
-                        input.request_focus();
-                        self.action_focus = None;
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Runner helper JAR");
-                    ui.text_edit_singleline(&mut self.helper);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Templates");
-                    ui.text_edit_singleline(&mut self.template_root);
-                });
-            });
-            let ram = ui.add(
-                egui::Slider::new(&mut self.ram, 1024..=16384)
-                    .step_by(256.0)
-                    .suffix(" MiB")
-                    .text("RAM"),
-            );
-            if self.action_focus == Some("Increase RAM") {
-                ram.request_focus();
-                self.action_focus = None;
+            if self.saved.is_none()
+                && downloadable
+                && ui
+                    .add_enabled(!self.pending, egui::Button::new("Download pinned mods"))
+                    .clicked()
+            {
+                self.download_mods();
             }
             ui.separator();
             let saved_server = self.saved.as_ref().is_some_and(|path| {
@@ -465,9 +472,8 @@ impl Runner {
                     ACCENT,
                     "Open Multiplayer to connect to the bookmarked server.",
                 );
-            } else {
-                ui.checkbox(&mut self.dev, "Local development profile");
             }
+            let can_use_dev = self.matchup.is_none() && !saved_server;
             if self.dev {
                 ui.colored_label(ACCENT, "Offline development session for local testing.");
             } else if let Some(account) = &self.account {
@@ -478,19 +484,13 @@ impl Runner {
                         self.account = None;
                     }
                 });
-            } else {
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.client_id)
-                            .hint_text("Microsoft application client ID"),
-                    );
-                    if ui
-                        .add_enabled(!self.pending, egui::Button::new("Sign in"))
-                        .clicked()
-                    {
-                        self.sign_in();
-                    }
-                });
+            } else if self.client_id.trim().is_empty() {
+                ui.colored_label(MUTED, "Microsoft sign-in needs an approved Cloud 9 build.");
+            } else if ui
+                .add_enabled(!self.pending, egui::Button::new("Sign in with Microsoft"))
+                .clicked()
+            {
+                self.sign_in();
             }
             if let Some((url, code)) = &self.verification {
                 ui.horizontal(|ui| {
@@ -503,15 +503,84 @@ impl Runner {
                     }
                 });
             }
+            ui.separator();
+            let focus_advanced = matches!(
+                self.action_focus,
+                Some("Locate jar" | "Fetch" | "Locate Java" | "Increase RAM")
+            );
+            egui::CollapsingHeader::new("Advanced settings")
+                .open(focus_advanced.then_some(true))
+                .show(ui, |ui| {
+                    if can_use_dev {
+                        ui.checkbox(&mut self.dev, "Local development profile");
+                    }
+                    if let Some(path) = &self.saved {
+                        ui.label(format!("Instance folder {} ", path.display()));
+                        if let Some(instance) = &self.saved_lock {
+                            ui.colored_label(
+                                MUTED,
+                                format!("Locked Java executable {}", instance.java.display()),
+                            );
+                            for locked in &instance.mods {
+                                ui.monospace(format!("{} {}", locked.mod_id, locked.version));
+                            }
+                        }
+                    }
+                    ui.add_enabled_ui(self.saved.is_none(), |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Local mod directory");
+                            let input = ui.text_edit_singleline(&mut self.supplied);
+                            if matches!(self.action_focus, Some("Locate jar" | "Fetch")) {
+                                input.request_focus();
+                                self.action_focus = None;
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Java executable");
+                            let input = ui.add(
+                                egui::TextEdit::singleline(&mut self.java).hint_text("Auto-detect"),
+                            );
+                            if self.action_focus == Some("Locate Java") {
+                                input.request_focus();
+                                self.action_focus = None;
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Runner helper JAR");
+                            ui.text_edit_singleline(&mut self.helper);
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Templates");
+                            ui.text_edit_singleline(&mut self.template_root);
+                        });
+                    });
+                    let ram = ui.add(
+                        egui::Slider::new(&mut self.ram, 1024..=16384)
+                            .step_by(256.0)
+                            .suffix(" MiB")
+                            .text("RAM"),
+                    );
+                    if self.action_focus == Some("Increase RAM") {
+                        ram.request_focus();
+                        self.action_focus = None;
+                    }
+                });
+            ui.add_space(6.0);
             if ui
                 .add_enabled(
                     !self.pending && self.process.is_none() && (self.dev || self.account.is_some()),
-                    egui::Button::new(if self.matchup.is_some() {
-                        "Join server"
-                    } else {
-                        "Launch client"
-                    })
-                    .fill(PANEL),
+                    egui::Button::new(
+                        RichText::new(if self.matchup.is_some() {
+                            "Join server"
+                        } else if self.saved.is_some() {
+                            "Resume"
+                        } else {
+                            "Play"
+                        })
+                        .strong()
+                        .color(GROUND),
+                    )
+                    .fill(ACCENT),
                 )
                 .clicked()
             {

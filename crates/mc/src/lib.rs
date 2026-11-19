@@ -11,6 +11,7 @@ pub use client::{
     ClientRuntime, Instance, create_instance, create_instance_with_helper, item_count, mod_set_hash,
 };
 pub use mods::{LockedMod, helper_mod, resolve_mods, stage_mods, verify_mods};
+pub use mods::{download_pinned_mods, has_mod_downloads};
 pub use process::{Diagnostic, Level, LogEvent, capture_logs, diagnose};
 pub use registry::{Alias, Registry, Resolution};
 

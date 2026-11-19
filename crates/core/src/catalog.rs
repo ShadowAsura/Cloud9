@@ -17,9 +17,11 @@ pub struct EpisodeCard {
     pub title: String,
     pub url: String,
     pub thumbnail_path: Option<String>,
+    pub duration: Option<u64>,
     pub mode: String,
     pub version: String,
     pub review_count: u32,
+    pub community_setup: bool,
     pub tags: Vec<String>,
 }
 
@@ -59,7 +61,7 @@ impl Catalog {
     ) -> Result<(Vec<EpisodeCard>, bool), rusqlite::Error> {
         let mut statement = self.0.prepare_cached(
             "SELECT e.video_id, e.title, e.url, e.thumbnail_path, e.mode, e.mc_version,
-                    e.review_count, e.manifest_json
+                    e.review_count, e.manifest_json, e.duration
              FROM episodes e
              WHERE (?1 = '' OR instr(lower(e.title), lower(?1)) > 0 OR lower(e.video_id) = lower(?1))
                AND (?2 = '' OR e.mode = ?2)
@@ -67,7 +69,7 @@ impl Catalog {
                     SELECT 1 FROM episode_tags t WHERE t.video_id = e.video_id AND instr(t.tag, lower(?3)) > 0
                ))
                AND (?4 = '' OR e.mc_version = ?4)
-             ORDER BY e.upload_date DESC, e.video_id
+             ORDER BY (e.url LIKE 'https://example.invalid/%'), e.upload_date DESC, e.video_id
              LIMIT ?5 OFFSET ?6",
         )?;
         let rows = statement.query_map(
@@ -102,9 +104,19 @@ impl Catalog {
                     title: row.get(1)?,
                     url: row.get(2)?,
                     thumbnail_path: row.get(3)?,
+                    duration: row.get(8)?,
                     mode: row.get(4)?,
                     version: row.get(5)?,
                     review_count: row.get(6)?,
+                    community_setup: source["findings"].as_array().is_some_and(|findings| {
+                        findings.iter().any(|entry| {
+                            entry["id"] == "community-setup"
+                                && matches!(
+                                    entry["status"].as_str(),
+                                    Some("confirmed" | "overridden")
+                                )
+                        })
+                    }),
                     tags,
                 })
             },

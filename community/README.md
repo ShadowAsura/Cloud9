@@ -4,6 +4,8 @@
 
 [Chicken Jockey Challenge Games](chicken-jockey.md) includes a playable solo round, a pinned Lucky Block dependency, and a repeatable Forge playtest.
 
+[Community map sources](maps.md) lists creator-published world downloads for other setups.
+
 ## Contributing a setup
 
 Cloud 9 indexes public episode metadata and caches thumbnails locally. Contribute gameplay setup as `community/VIDEO_ID.json`. Use the YouTube video ID and include timestamps for evidence that appears on screen.
