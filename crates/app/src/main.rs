@@ -1,4 +1,5 @@
 mod runner;
+mod servers;
 
 use cloud9_core::catalog::{Catalog, EpisodeCard, Filters};
 use eframe::egui::{
@@ -196,11 +197,13 @@ enum Screen {
     Episodes,
     RunPlan,
     Running,
+    Servers,
 }
 
 struct Browser {
     screen: Screen,
     runner: runner::Runner,
+    servers: servers::Servers,
     path: PathBuf,
     catalog: Option<Catalog>,
     filters: Filters,
@@ -217,6 +220,7 @@ impl Browser {
         let mut browser = Self {
             screen: Screen::Episodes,
             runner: runner::Runner::new(),
+            servers: servers::Servers::new(),
             path,
             catalog: None,
             filters: Filters::default(),
@@ -263,6 +267,7 @@ impl eframe::App for Browser {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         self.thumbs.update(ctx);
         self.runner.poll(ctx);
+        self.servers.poll(ctx);
         egui::TopBottomPanel::top("header")
             .frame(
                 Frame::new()
@@ -284,6 +289,7 @@ impl eframe::App for Browser {
                         (Screen::Episodes, "Episodes"),
                         (Screen::RunPlan, "Run plan"),
                         (Screen::Running, "Running"),
+                        (Screen::Servers, "Servers"),
                     ] {
                         ui.selectable_value(&mut self.screen, screen, label);
                     }
@@ -299,6 +305,21 @@ impl eframe::App for Browser {
                     }
                     Screen::Running => {
                         self.runner.running(ui);
+                        return;
+                    }
+                    Screen::Servers => {
+                        if let Some(path) = self.servers.view(ui, &self.runner) {
+                            let imported = (|| -> Result<_, String> {
+                                let matchup = cloud9_server::Matchup::load(&path).map_err(|error| error.to_string())?;
+                                let document = self.catalog.as_ref()
+                                    .ok_or_else(|| "Open an episode catalog before importing a matchup".to_owned())?
+                                    .document(&matchup.manifest_id)
+                                    .map_err(|_| format!("Add episode {} to the catalog before importing this matchup", matchup.manifest_id))?;
+                                Ok((matchup.pin(&document).map_err(|error| error.to_string())?, matchup))
+                            })();
+                            self.runner.import(imported);
+                            self.screen = Screen::RunPlan;
+                        }
                         return;
                     }
                     Screen::Episodes => {}

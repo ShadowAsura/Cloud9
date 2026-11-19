@@ -43,3 +43,21 @@ Build the helper with Java 8 and Gradle 2.14.1 using `gradle -p helper-mod setup
 The two built-in template saves are generated locally as needed. To use your own template, put its save folder under `templates/` and set the manifest's `map.template_id` to that folder name. Open the prepared Cloud9 save in Singleplayer. The helper fills chests, builds structures, adds villagers and trades, and applies round settings when the save first loads. **Reset round and launch** restores the pre-launch snapshot after Minecraft has exited and keeps a backup of the prior round.
 
 Use `aliases/<mod_id>/<version>.json` to map lowercased raw labels or registry IDs to an object with `id` and optional `meta` and `nbt` fields.
+
+## M6 · Dedicated servers
+
+Open **Servers** after choosing an episode. Choose a local folder name, player limit, RAM, and port. Port zero selects an available port. Review and explicitly accept the EULA before starting. The screen shows the join address, TCP reachability, console output, and connected players. Servers authenticate players by default. Keep offline servers on a trusted LAN. [Minecraft EULA](https://www.minecraft.net/en-us/eula)
+
+Copy `server.example.toml` to `server.toml` for headless use. Paths are relative to the configuration file. Set `accept_eula = true` only after accepting the EULA. Use separate terminals or a service unit for the supervisor and control commands.
+
+```sh
+cargo run -p runner-cli -- server create
+cargo run -p runner-cli -- server start
+cargo run -p runner-cli -- server logs --follow
+cargo run -p runner-cli -- server reset
+cargo run -p runner-cli -- server stop
+```
+
+To expose a port, confirm internet exposure before enabling UPnP. A tunnel can be configured with `settings.tunnel` as an executable and argument array, `settings.tunnel_address` as the public join address, and `settings.authorize_public = true`. The provider receives `CLOUD9_LOCAL_ADDRESS`. A TCP check reports reachability from the machine issuing the test. Cloud 9 applies Mojang's legacy server logging mitigation. [Minecraft server logging guidance](https://www.minecraft.net/en-us/article/important-message--security-vulnerability-java-edition)
+
+Export a `.matchup` file from Servers or with `runner-cli server export round.matchup`. The recipient imports it from Servers after indexing the same episode, supplies missing mod jars, then signs in and joins. The matchup pins server-side mod hashes and carries a manifest ID and join address.

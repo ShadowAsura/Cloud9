@@ -499,3 +499,29 @@ mod tests {
         Ok(())
     }
 }
+
+/// Write a multiplayer bookmark while preserving the other entries in servers.dat.
+pub fn bookmark_server(instance: &Path, name: &str, address: &str) -> Result<(), Error> {
+    let path = instance.join("servers.dat");
+    let mut state: HashMap<String, Tag> = if path.is_file() {
+        fastnbt::from_bytes(&fs::read(&path)?)?
+    } else {
+        HashMap::new()
+    };
+    let servers = state
+        .entry("servers".into())
+        .or_insert_with(|| Tag::List(Vec::new()));
+    let Tag::List(servers) = servers else {
+        return Err(Error::Setup(
+            "servers.dat has an invalid servers list".into(),
+        ));
+    };
+    if !servers.iter().any(|record| {
+        matches!(record, Tag::Compound(fields) if matches!(fields.get("ip"), Some(Tag::String(ip)) if ip == address))
+    }) {
+        servers.push(Tag::Compound(HashMap::from([
+            ("name".into(), Tag::String(name.into())), ("ip".into(), Tag::String(address.into())),
+        ])));
+    }
+    publish(&path, &fastnbt::to_bytes(&state)?)
+}

@@ -2,7 +2,7 @@ use crate::{ACCENT, ERROR, GROUND, MUTED, OK, PANEL, TEXT};
 use cloud9_core::Document;
 use cloud9_mc::{
     Account, ClientRuntime, Installer, Instance, Level, LogEvent, MicrosoftSignIn, Profile,
-    bootstrap_client_registry, create_instance_with_helper,
+    bootstrap_client_registry, create_instance, create_instance_with_helper,
 };
 use eframe::egui::{self, Frame, RichText};
 use std::{
@@ -37,6 +37,7 @@ pub struct Runner {
     helper: String,
     template_root: String,
     previous: Option<PathBuf>,
+    matchup: Option<cloud9_server::Matchup>,
     ram: u32,
     pending: bool,
     verification: Option<(String, String)>,
@@ -64,6 +65,7 @@ impl Runner {
             helper: "helper-mod/build/libs/runner-helper-0.1.0.jar".into(),
             template_root: "templates".into(),
             previous: None,
+            matchup: None,
             ram: 2048,
             pending: false,
             verification: None,
@@ -105,7 +107,7 @@ impl Runner {
                         .append(true)
                         .open(path.join("logs/runner.log"))
                         .ok();
-                    self.previous = Some(path);
+                    self.previous = path.join("round-snapshot").is_dir().then_some(path);
                     self.process = Some(child);
                     self.log_stream = Some(stream);
                 }
@@ -143,6 +145,7 @@ impl Runner {
 
     pub fn select(&mut self, result: Result<Document, String>) {
         self.previous = None;
+        self.matchup = None;
         match result {
             Ok(document) => {
                 self.selected = Some(document);
@@ -157,6 +160,26 @@ impl Runner {
                 self.error = true;
             }
         }
+    }
+
+    pub fn import(&mut self, input: Result<(Document, cloud9_server::Matchup), String>) {
+        match input {
+            Ok((document, matchup)) => {
+                self.select(Ok(document));
+                self.matchup = Some(matchup);
+                self.dev = false;
+            }
+            Err(error) => self.select(Err(error)),
+        }
+    }
+
+    pub fn paths(&self) -> (PathBuf, Option<PathBuf>, PathBuf, PathBuf) {
+        (
+            PathBuf::from(&self.supplied),
+            (!self.java.is_empty()).then(|| PathBuf::from(&self.java)),
+            PathBuf::from(&self.helper),
+            PathBuf::from(&self.template_root),
+        )
     }
 
     fn sign_in(&mut self) {
@@ -197,17 +220,42 @@ impl Runner {
         self.error = false;
         self.status = "Checking Java and mod jars".into();
         let sender = self.send.clone();
-        let supplied = PathBuf::from(&self.supplied);
-        let java = (!self.java.is_empty()).then(|| PathBuf::from(&self.java));
+        let (supplied, java, helper, templates) = self.paths();
         let ram = self.ram;
-        let helper = PathBuf::from(&self.helper);
-        let templates = PathBuf::from(&self.template_root);
+        let matchup = if reset { None } else { self.matchup.clone() };
         let previous = reset.then(|| self.previous.clone()).flatten();
         std::thread::spawn(move || {
             let result = (|| -> Result<_, Box<dyn std::error::Error>> {
+                let mut document = document;
                 let profile = Profile::primary()?;
                 let cache = PathBuf::from(".cache/minecraft");
+                if let Some(matchup) = &matchup {
+                    let instance = create_instance(
+                        &PathBuf::from("instances"),
+                        &cache,
+                        &document,
+                        &profile,
+                        &supplied,
+                        java.as_deref(),
+                    )?;
+                    cloud9_world::bookmark_server(
+                        &instance.root,
+                        &document.manifest().episode.title,
+                        &matchup.address,
+                    )?;
+                    let runtime = ClientRuntime::prepare(&Installer::new(&cache)?, &instance)?;
+                    let (logs, receive) = channel();
+                    let child = runtime.launch(
+                        &instance,
+                        &account,
+                        ram,
+                        Some(matchup.host_port()?),
+                        logs,
+                    )?;
+                    return Ok(Update::Launched(child, instance.root, receive));
+                }
                 let instance = if let Some(previous) = previous {
+                    document = Document::load(&previous.join("episode.json"))?;
                     Instance::open(&previous)?
                 } else {
                     create_instance_with_helper(
@@ -303,7 +351,11 @@ impl Runner {
                     .text("RAM"),
             );
             ui.separator();
-            ui.checkbox(&mut self.dev, "Local development profile");
+            if let Some(matchup) = &self.matchup {
+                ui.colored_label(ACCENT, format!("Join {}", matchup.address));
+            } else {
+                ui.checkbox(&mut self.dev, "Local development profile");
+            }
             if self.dev {
                 ui.colored_label(ACCENT, "Offline development session for local testing.");
             } else if let Some(account) = &self.account {
@@ -336,7 +388,12 @@ impl Runner {
             if ui
                 .add_enabled(
                     !self.pending && self.process.is_none() && (self.dev || self.account.is_some()),
-                    egui::Button::new("Launch client").fill(PANEL),
+                    egui::Button::new(if self.matchup.is_some() {
+                        "Join server"
+                    } else {
+                        "Launch client"
+                    })
+                    .fill(PANEL),
                 )
                 .clicked()
             {

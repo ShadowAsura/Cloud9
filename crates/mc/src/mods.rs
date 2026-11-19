@@ -12,6 +12,8 @@ use zip::ZipArchive;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LockedMod {
+    #[serde(default)]
+    pub entry_id: String,
     pub mod_id: String,
     pub version: String,
     pub sha256: String,
@@ -218,6 +220,7 @@ pub fn resolve_mods(
             atomically_write(&path, &bytes)?;
         }
         resolved.push(LockedMod {
+            entry_id: record.id.clone(),
             mod_id: candidate.id.clone(),
             version: candidate.version.clone(),
             sha256: hash.clone(),
@@ -255,6 +258,7 @@ pub fn helper_mod(path: &Path, cache: &Path) -> Result<LockedMod, Error> {
         atomically_write(&target, &bytes)?;
     }
     Ok(LockedMod {
+        entry_id: "runner-helper".into(),
         mod_id: "runner-helper".into(),
         version: version.to_owned(),
         sha256: hash,

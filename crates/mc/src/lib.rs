@@ -198,3 +198,5 @@ pub(crate) fn safe_component(component: &str) -> bool {
 }
 mod bootstrap;
 pub use bootstrap::{await_registry, bootstrap_client_registry, read_registry};
+mod server_runtime;
+pub use server_runtime::ServerRuntime;

@@ -1,0 +1,18 @@
+manifest = "data/episodes/fixture-01.json"
+slug = "coppergate"
+servers = "servers"
+cache = ".cache/minecraft"
+templates = "templates"
+aliases = "aliases"
+local_mods = "local-mods"
+helper = "helper-mod/build/libs/runner-helper-0.1.0.jar"
+# java = 'C:\path\to\jdk8\bin\java.exe'
+accept_eula = false
+
+[settings]
+port = 0
+max_players = 8
+motd = "Cloud 9 matchup"
+ram_mib = 2048
+online_mode = true
+auto_restarts = 2

@@ -16,3 +16,6 @@
 *.matchup
 /helper-mod/.gradle/
 /helper-mod/build/
+/server.toml
+/local-mods/
+/helper-mod/run/

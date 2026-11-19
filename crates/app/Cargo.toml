@@ -11,3 +11,4 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 tracing.workspace = true
 cloud9-mc = { path = "../mc" }
 cloud9-world = { path = "../world" }
+cloud9-server = { path = "../server" }
