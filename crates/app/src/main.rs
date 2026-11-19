@@ -85,7 +85,12 @@ fn set_theme(ctx: &egui::Context) {
     ctx.style_mut(|style| {
         style.spacing.item_spacing = vec2(10.0, 8.0);
         style.spacing.button_padding = vec2(14.0, 8.0);
-        style.spacing.menu_margin = vec2(10.0, 8.0);
+        style.spacing.menu_margin = egui::Margin {
+            left: 10.0,
+            right: 10.0,
+            top: 8.0,
+            bottom: 8.0,
+        };
         style
             .text_styles
             .insert(TextStyle::Body, FontId::proportional(15.0));
@@ -115,7 +120,7 @@ fn set_theme(ctx: &egui::Context) {
             &mut visual.widgets.active,
             &mut visual.widgets.open,
         ] {
-            widget.corner_radius = CornerRadius::same(4.0);
+            widget.corner_radius = CornerRadius::same(4.0_f32);
             widget.bg_fill = PANEL;
             widget.weak_bg_fill = PANEL;
             widget.bg_stroke = Stroke::new(1.0_f32, BORDER);
@@ -641,7 +646,7 @@ fn render_card(
         .fill(SURFACE)
         .stroke(Stroke::new(1.0_f32, BORDER))
         .corner_radius(CARD_RADIUS)
-        .inner_margin(egui::Margin::same(0.0))
+        .inner_margin(egui::Margin::same(0.0_f32))
         .show(ui, |ui| {
             ui.set_width(inner_width);
             ui.spacing_mut().item_spacing.y = 6.0;
@@ -651,7 +656,7 @@ fn render_card(
 
             // Content.
             Frame::new()
-                .inner_margin(egui::Margin::same(12.0))
+                .inner_margin(egui::Margin::same(12.0_f32))
                 .show(ui, |ui| {
                     ui.set_width(inner_width - 24.0);
                     ui.spacing_mut().item_spacing.y = 6.0;
@@ -714,19 +719,25 @@ fn render_card(
                     ui.add_space(10.0);
 
                     // Action row: primary action left, watch link right.
-                    ui.horizontal(|ui| {
-                        let clicked = ui
-                            .small_button(if card.community_setup {
-                                "Play"
-                            } else {
-                                "Details"
-                            })
-                            .clicked();
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.hyperlink_to("Watch episode", &card.url);
-                        });
-                        opened || clicked
-                    });
+                    let clicked = ui
+                        .horizontal(|ui| {
+                            let clicked = ui
+                                .small_button(if card.community_setup {
+                                    "Play"
+                                } else {
+                                    "Details"
+                                })
+                                .clicked();
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.hyperlink_to("Watch episode", &card.url);
+                                },
+                            );
+                            clicked
+                        })
+                        .inner;
+                    opened || clicked
                 });
         })
         .inner

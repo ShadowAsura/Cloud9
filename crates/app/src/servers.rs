@@ -2,7 +2,7 @@ use crate::{
     ACCENT, BORDER, ERROR, GROUND, MUTED, OK, PANEL, SURFACE, TEXT, TEXT_DIM, runner::Runner,
 };
 use cloud9_server::{Control, Create, EULA_URL, Matchup, Options, Server, Status};
-use eframe::egui::{self, RichText, Stroke, vec2};
+use eframe::egui::{self, Frame, RichText, Stroke, vec2};
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
@@ -233,9 +233,9 @@ impl Servers {
         if ui
             .add_enabled(
                 self.pending.is_none() && runner.selected.is_some(),
-                egui::Button::new(RichText::new("Create server").strong().color(GROUND)),
+                egui::Button::new(RichText::new("Create server").strong().color(GROUND))
+                    .fill(ACCENT),
             )
-            .fill(ACCENT)
             .clicked()
         {
             self.create(runner);
@@ -399,7 +399,7 @@ impl Servers {
                     .fill(GROUND)
                     .stroke(Stroke::new(1.0_f32, BORDER))
                     .corner_radius(crate::CARD_RADIUS)
-                    .inner_margin(egui::Margin::same(10.0))
+                    .inner_margin(egui::Margin::same(10.0_f32))
                     .show(ui, |ui| {
                         ui.label(RichText::new(&self.logs).monospace().size(12.0));
                     });

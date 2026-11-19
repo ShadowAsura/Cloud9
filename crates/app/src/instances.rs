@@ -15,6 +15,7 @@ struct Card {
     changed: SystemTime,
 }
 
+#[derive(Debug, PartialEq)]
 enum InstanceState {
     NeedsRepair,
     SoloSave,
@@ -99,7 +100,7 @@ impl Instances {
                     .fill(SURFACE)
                     .stroke(Stroke::new(1.0_f32, BORDER))
                     .corner_radius(crate::CARD_RADIUS)
-                    .inner_margin(egui::Margin::same(14.0))
+                    .inner_margin(egui::Margin::same(14.0_f32))
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
                         ui.spacing_mut().item_spacing = vec2(10.0, 8.0);
@@ -117,13 +118,15 @@ impl Instances {
                             });
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if ui
-                                    .button(
-                                        RichText::new("Open")
-                                            .small()
-                                            .strong()
-                                            .color(GROUND),
+                                    .add(
+                                        egui::Button::new(
+                                            RichText::new("Open")
+                                                .small()
+                                                .strong()
+                                                .color(GROUND),
+                                        )
+                                        .fill(ACCENT),
                                     )
-                                    .fill(ACCENT)
                                     .clicked()
                                 {
                                     selection = Some(card.path.clone());

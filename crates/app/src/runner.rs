@@ -411,7 +411,6 @@ impl Runner {
 
     /// A form row: label on the left, editable value on the right.
     fn form_row(
-        &mut self,
         ui: &mut egui::Ui,
         label: &str,
         value: &mut String,
@@ -488,7 +487,7 @@ impl Runner {
                 ui.colored_label(MUTED, "No pinned mods.");
             }
 
-            if episode.source()["map"]["overrides"]["challenge"]["kind"] == "chicken_jockey" {
+            if document.source()["map"]["overrides"]["challenge"]["kind"] == "chicken_jockey" {
                 ui.add_space(6.0);
                 ui.colored_label(ACCENT, "Community round");
                 ui.label("Open Lucky Blocks, trade with the Arena Trader, then right-click the gold block to fight.");
@@ -587,15 +586,15 @@ impl Runner {
                         ui.add_space(4.0);
                     }
                     ui.add_enabled_ui(self.saved.is_none(), |ui| {
-                        self.form_row(ui, "Local mod directory", &mut self.supplied, None,
+                        form_row(ui, "Local mod directory", &mut self.supplied, None,
                             matches!(self.action_focus, Some("Locate jar" | "Fetch")));
                         ui.add_space(4.0);
-                        self.form_row(ui, "Java executable", &mut self.java, Some("Auto-detect"),
+                        form_row(ui, "Java executable", &mut self.java, Some("Auto-detect"),
                             self.action_focus == Some("Locate Java"));
                         ui.add_space(4.0);
-                        self.form_row(ui, "Runner helper JAR", &mut self.helper, None, false);
+                        form_row(ui, "Runner helper JAR", &mut self.helper, None, false);
                         ui.add_space(4.0);
-                        self.form_row(ui, "Templates", &mut self.template_root, None, false);
+                        form_row(ui, "Templates", &mut self.template_root, None, false);
                     });
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
@@ -629,8 +628,9 @@ impl Runner {
                             })
                             .strong()
                             .color(GROUND),
+                        )
+                        .fill(ACCENT),
                     )
-                    .fill(ACCENT)
                     .clicked()
                 {
                     self.launch(false);
@@ -745,7 +745,7 @@ impl Runner {
                         .fill(GROUND)
                         .stroke(Stroke::new(1.0_f32, BORDER))
                         .corner_radius(crate::CARD_RADIUS)
-                        .inner_margin(egui::Margin::same(10.0))
+                        .inner_margin(egui::Margin::same(10.0_f32))
                         .show(ui, |ui| {
                             for event in &self.events {
                                 let (label, color) = match event.level {
