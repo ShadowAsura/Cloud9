@@ -72,12 +72,15 @@ impl ServerRuntime {
             )));
         }
         files.push(verified(&output, root)?);
-        let logging = "log4j2_17-111.xml".to_owned();
+        let security = profile.server_logging.as_ref().ok_or_else(|| {
+            Error::Config("this profile requires a verified server logging configuration".into())
+        })?;
+        let logging = security.filename.clone();
+        if !crate::safe_component(&logging) {
+            return Err(Error::Config("invalid server logging filename".into()));
+        }
         let config = root.join(&logging);
-        installer.get(
-            "https://launcher.mojang.com/v1/objects/4bb89a97a66f350bc9f73b3ca8509632682aea2e/log4j2_17-111.xml",
-            &["4bb89a97a66f350bc9f73b3ca8509632682aea2e"], &config,
-        )?;
+        installer.get(&security.url, &[&security.sha1], &config)?;
         files.push(verified(&config, root)?);
         let runtime = Self {
             forge_jar,

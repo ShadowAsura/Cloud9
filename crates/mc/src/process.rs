@@ -59,9 +59,32 @@ pub fn capture_logs(
     std::thread::spawn(move || {
         let mut reader = BufReader::new(reader);
         let mut bytes = Vec::new();
+        let mut xml_level = None;
         while reader.read_until(b'\n', &mut bytes)? != 0 {
             let mut line = String::from_utf8_lossy(&bytes).trim_end().to_owned();
             bytes.clear();
+            let text = line.trim();
+            if text.starts_with("<log4j:Event ") {
+                xml_level = Some(
+                    if text.contains("level=\"ERROR\"") || text.contains("level=\"FATAL\"") {
+                        Level::Error
+                    } else if text.contains("level=\"WARN\"") {
+                        Level::Warn
+                    } else {
+                        Level::Info
+                    },
+                );
+                continue;
+            }
+            if text == "</log4j:Event>" {
+                xml_level = None;
+                continue;
+            }
+            if let Some(message) = text.strip_prefix("<log4j:Message><![CDATA[") {
+                line = message.trim_end_matches("]]></log4j:Message>").to_owned();
+            } else if let Some(message) = text.strip_suffix("]]></log4j:Message>") {
+                line = message.to_owned();
+            }
             for secret in secrets.iter().filter(|secret| !secret.is_empty()) {
                 line = line.replace(secret, "[redacted]");
             }
@@ -72,7 +95,7 @@ pub fn capture_logs(
                 } else if line.contains("/WARN]") {
                     Level::Warn
                 } else {
-                    Level::Info
+                    xml_level.unwrap_or(Level::Info)
                 };
             if sender
                 .send(LogEvent {

@@ -29,7 +29,7 @@
       "properties": {
         "video_id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
         },
         "title": {
           "type": "string",
@@ -1062,6 +1062,30 @@
           }
         }
       }
+    },
+    "mob_tags": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/evidence"
+          },
+          {
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
     }
   },
   "$defs": {
@@ -1089,6 +1113,10 @@
         "timestamp_seconds": {
           "type": "integer",
           "minimum": 0
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
         }
       }
     },

@@ -1,0 +1,68 @@
+name: Verify and package
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+            suffix: .exe
+          - os: ubuntu-latest
+            platform: linux-x64
+            suffix: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test scraper offline
+        run: |
+          python -m pip install -r scraper/requirements.txt
+          python -m unittest discover -s scraper/tests
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+      - name: Lint Rust workspace
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Test Rust workspace
+        run: cargo test --locked --workspace
+      - name: Build desktop and headless binaries
+        run: cargo build --locked --release -p cloud9-app -p runner-cli
+      - name: Package launcher and CLI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/cloud9-app${{ matrix.suffix }},target/release/runner-cli${{ matrix.suffix }} dist/
+          Copy-Item LICENSE,README.md,server.example.toml dist/
+          Copy-Item crates/app/fonts/OFL.txt dist/IBM-Plex-OFL.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloud9-${{ matrix.platform }}
+          path: dist/
+          if-no-files-found: error
+
+  helper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+      - name: Build the Forge helper from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLo gradle.zip https://downloads.gradle.org/distributions/gradle-2.14.1-bin.zip
+          printf '%s  gradle.zip\n' cfc61eda71f2d12a572822644ce13d2919407595c2aec3e3566d2aab6f97ef39 | sha256sum -c -
+          unzip -q gradle.zip
+          ./gradle-2.14.1/bin/gradle --no-daemon -p helper-mod setupCIWorkspace build

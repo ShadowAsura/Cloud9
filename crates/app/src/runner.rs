@@ -37,6 +37,9 @@ pub struct Runner {
     helper: String,
     template_root: String,
     previous: Option<PathBuf>,
+    latest: Option<PathBuf>,
+    action_focus: Option<&'static str>,
+    ignored_message: Option<&'static str>,
     matchup: Option<cloud9_server::Matchup>,
     ram: u32,
     pending: bool,
@@ -65,6 +68,9 @@ impl Runner {
             helper: "helper-mod/build/libs/runner-helper-0.1.0.jar".into(),
             template_root: "templates".into(),
             previous: None,
+            latest: None,
+            action_focus: None,
+            ignored_message: None,
             matchup: None,
             ram: 2048,
             pending: false,
@@ -81,7 +87,8 @@ impl Runner {
         }
     }
 
-    pub fn poll(&mut self, ctx: &egui::Context) {
+    pub fn poll(&mut self, ctx: &egui::Context) -> bool {
+        let mut launched = false;
         for update in self.update.try_iter() {
             match update {
                 Update::Verification(url, code) => self.verification = Some((url, code)),
@@ -102,11 +109,14 @@ impl Runner {
                     self.status = format!("Minecraft running · {}", path.display());
                     self.pending = false;
                     self.events.clear();
+                    self.ignored_message = None;
                     self.logfile = OpenOptions::new()
                         .create(true)
                         .append(true)
                         .open(path.join("logs/runner.log"))
                         .ok();
+                    launched = true;
+                    self.latest = Some(path.clone());
                     self.previous = path.join("round-snapshot").is_dir().then_some(path);
                     self.process = Some(child);
                     self.log_stream = Some(stream);
@@ -141,6 +151,7 @@ impl Runner {
         if self.pending || self.process.is_some() {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
+        launched
     }
 
     pub fn select(&mut self, result: Result<Document, String>) {
@@ -227,7 +238,7 @@ impl Runner {
         std::thread::spawn(move || {
             let result = (|| -> Result<_, Box<dyn std::error::Error>> {
                 let mut document = document;
-                let profile = Profile::primary()?;
+                let profile = Profile::selected()?;
                 let cache = PathBuf::from(".cache/minecraft");
                 if let Some(matchup) = &matchup {
                     let instance = create_instance(
@@ -279,17 +290,19 @@ impl Runner {
                     &document,
                     instance.root.join("saves/Cloud9"),
                     instance.root.join("round-snapshot"),
-                    &templates,
-                    &PathBuf::from("aliases"),
-                    &instance.mods,
-                    &registry,
-                    &instance.mod_set_hash,
-                    "cloud9-round",
+                    cloud9_world::SetupContext {
+                        templates: &templates,
+                        aliases: &PathBuf::from("aliases"),
+                        mods: &instance.mods,
+                        registry: &registry,
+                        mod_set_hash: &instance.mod_set_hash,
+                        run_id: "cloud9-round",
+                    },
                 )?;
                 if reset {
                     round.reset()?;
                 } else {
-                    round.prepare(&templates.join(&document.manifest().map.template_id))?;
+                    round.prepare()?;
                 }
                 let (logs, receive) = channel();
                 let child = runtime.launch(&instance, &account, ram, None, logs)?;
@@ -325,16 +338,31 @@ impl Runner {
                 ),
             );
             for jar in &episode.mods {
-                ui.label(&jar.display_name.value);
+                ui.horizontal(|ui| {
+                    ui.label(&jar.display_name.value);
+                    if let Some(source) = jar.file_hint.as_ref().and_then(|hint| hint.url.as_ref())
+                    {
+                        ui.hyperlink_to("Source", source);
+                    }
+                });
             }
             ui.separator();
             ui.horizontal(|ui| {
                 ui.label("Local mod directory");
-                ui.text_edit_singleline(&mut self.supplied);
+                let input = ui.text_edit_singleline(&mut self.supplied);
+                if matches!(self.action_focus, Some("Locate jar" | "Fetch")) {
+                    input.request_focus();
+                    self.action_focus = None;
+                }
             });
             ui.horizontal(|ui| {
                 ui.label("Java executable");
-                ui.add(egui::TextEdit::singleline(&mut self.java).hint_text("Auto-detect"));
+                let input =
+                    ui.add(egui::TextEdit::singleline(&mut self.java).hint_text("Auto-detect"));
+                if self.action_focus == Some("Locate Java") {
+                    input.request_focus();
+                    self.action_focus = None;
+                }
             });
             ui.horizontal(|ui| {
                 ui.label("Runner helper JAR");
@@ -344,12 +372,16 @@ impl Runner {
                 ui.label("Templates");
                 ui.text_edit_singleline(&mut self.template_root);
             });
-            ui.add(
+            let ram = ui.add(
                 egui::Slider::new(&mut self.ram, 1024..=16384)
                     .step_by(256.0)
                     .suffix(" MiB")
                     .text("RAM"),
             );
+            if self.action_focus == Some("Increase RAM") {
+                ram.request_focus();
+                self.action_focus = None;
+            }
             ui.separator();
             if let Some(matchup) = &self.matchup {
                 ui.colored_label(ACCENT, format!("Join {}", matchup.address));
@@ -359,7 +391,13 @@ impl Runner {
             if self.dev {
                 ui.colored_label(ACCENT, "Offline development session for local testing.");
             } else if let Some(account) = &self.account {
-                ui.colored_label(OK, format!("Signed in as {}", account.name));
+                let name = account.name.clone();
+                ui.horizontal(|ui| {
+                    ui.colored_label(OK, format!("Signed in as {name}"));
+                    if ui.button("Sign out").clicked() {
+                        self.account = None;
+                    }
+                });
             } else {
                 ui.horizontal(|ui| {
                     ui.add(
@@ -402,10 +440,17 @@ impl Runner {
         } else {
             ui.colored_label(MUTED, "Choose an episode in the browser.");
         }
+        if self.error && self.status.starts_with("Locate jar") && ui.button("Locate jar").clicked()
+        {
+            self.action_focus = Some("Locate jar");
+        }
+        if self.error && self.status.starts_with("Edit alias") {
+            ui.label("Edit aliases/<mod_id>/<version>.json, then retry.");
+        }
         self.status(ui);
     }
 
-    pub fn running(&mut self, ui: &mut egui::Ui) {
+    pub fn running(&mut self, ui: &mut egui::Ui) -> bool {
         ui.heading(RichText::new("Running").size(31.0));
         self.status(ui);
         if self.previous.is_some()
@@ -419,8 +464,57 @@ impl Runner {
         {
             self.launch(true);
         }
+        if let Some(path) = &self.latest
+            && ui.button("Bundle local logs").clicked()
+        {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("run");
+            let destination = PathBuf::from(".cache/reports").join(format!("{name}.zip"));
+            match cloud9_mc::support_bundle(path, &destination) {
+                Ok(_) => {
+                    self.error = false;
+                    self.status = format!("Log bundle saved to {}", destination.display());
+                }
+                Err(error) => {
+                    self.error = true;
+                    self.status = error.to_string();
+                }
+            }
+        }
         if self.events.is_empty() {
             ui.colored_label(MUTED, "Minecraft output will appear here.");
+        }
+        let mut open_plan = false;
+        let diagnostic = self
+            .events
+            .iter()
+            .rev()
+            .find_map(|event| event.diagnostic)
+            .filter(|diagnostic| Some(diagnostic.message) != self.ignored_message);
+        if let Some(diagnostic) = diagnostic {
+            ui.colored_label(ACCENT, diagnostic.message);
+            ui.horizontal_wrapped(|ui| {
+                for action in diagnostic.actions {
+                    if ui.button(*action).clicked() {
+                        if *action == "Ignore" {
+                            self.ignored_message = Some(diagnostic.message);
+                        } else {
+                            self.action_focus = Some(action);
+                            open_plan = true;
+                            if *action == "Edit alias" {
+                                self.status = "Edit alias: update aliases/<mod_id>/<version>.json, then retry.".into();
+                                self.error = true;
+                            }
+                            if *action == "Fetch" {
+                                self.status = "Use the mod source links and place the matching jars in the local mod directory.".into();
+                                self.error = false;
+                            }
+                        }
+                    }
+                }
+            });
         }
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
@@ -450,6 +544,7 @@ impl Runner {
                     }
                 });
             });
+        open_plan
     }
 
     fn status(&self, ui: &mut egui::Ui) {

@@ -42,15 +42,14 @@ pub fn merge_overrides(source: &Value, overrides: &Value) -> Result<(Value, Vec<
                 .ok_or_else(|| invalid(path, format!("missing pointer token {token}")))?;
         }
         let replacement = &patch["value"];
-        if let Some(expected) = patch.get("expected") {
-            if node != expected && node != replacement {
-                tracing::warn!(path, "scrape disagrees with override baseline");
-                conflicts.push(Conflict {
-                    path: path.to_owned(),
-                    expected: expected.clone(),
-                    observed: node.clone(),
-                });
-            }
+        let expected = patch.get("expected").unwrap_or(replacement);
+        if node != expected && node != replacement {
+            tracing::warn!(path, "scrape disagrees with override baseline");
+            conflicts.push(Conflict {
+                path: path.to_owned(),
+                expected: expected.clone(),
+                observed: node.clone(),
+            });
         }
         *node = replacement.clone();
     }

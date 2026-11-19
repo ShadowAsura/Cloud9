@@ -53,9 +53,22 @@ pub fn await_registry(
     path: &Path,
     hash: &str,
 ) -> Result<Registry, Error> {
+    await_registry_until(child, receiver, path, hash, || false)
+}
+
+pub fn await_registry_until(
+    child: &mut Child,
+    receiver: &Receiver<LogEvent>,
+    path: &Path,
+    hash: &str,
+    cancelled: impl Fn() -> bool,
+) -> Result<Registry, Error> {
     let start = Instant::now();
     let mut diagnostic = None;
     while start.elapsed() < Duration::from_secs(120) {
+        if cancelled() {
+            return Err(Error::Config("registry discovery cancelled".into()));
+        }
         if path.is_file() {
             return read_registry(path, hash);
         }

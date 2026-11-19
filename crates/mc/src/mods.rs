@@ -29,59 +29,74 @@ struct Candidate {
 }
 
 fn candidates(directory: &Path) -> Result<Vec<Candidate>, Error> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
     let mut result = Vec::new();
-    for entry in fs::read_dir(directory)? {
-        let path = entry?.path();
-        if !path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("jar"))
+    for entry in entries {
+        let entry = entry?;
+        if entry.file_type()?.is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("jar"))
         {
-            continue;
-        }
-        let mut archive = ZipArchive::new(File::open(&path)?)?;
-        let file = match archive.by_name("mcmod.info") {
-            Ok(file) => file,
-            Err(zip::result::ZipError::FileNotFound) => continue,
-            Err(error) => return Err(error.into()),
-        };
-        if file.size() > 1024 * 1024 {
-            return Err(Error::Config(format!(
-                "oversized mcmod.info in {}",
-                path.display()
-            )));
-        }
-        let metadata: Value = match serde_json::from_reader(file) {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                tracing::warn!(path = %path.display(), %error, "invalid mcmod.info");
-                continue;
-            }
-        };
-        let Some(list) = metadata
-            .as_array()
-            .or_else(|| metadata["modList"].as_array())
-        else {
-            continue;
-        };
-        for record in list {
-            let Some(id) = record["modid"].as_str().filter(|id| safe_component(id)) else {
-                continue;
-            };
-            let Some(version) = record["version"]
-                .as_str()
-                .filter(|version| !version.is_empty())
-            else {
-                continue;
-            };
-            result.push(Candidate {
-                path: path.clone(),
-                id: id.to_owned(),
-                version: version.to_owned(),
-                display_name: record["name"].as_str().unwrap_or(id).to_owned(),
-            });
+            read_metadata(&entry.path(), &mut result)?;
         }
     }
     Ok(result)
+}
+
+fn read_metadata(path: &Path, result: &mut Vec<Candidate>) -> Result<(), Error> {
+    let mut archive = match ZipArchive::new(File::open(path)?) {
+        Ok(archive) => archive,
+        Err(error) => {
+            tracing::warn!(path = %path.display(), %error, "unreadable local mod archive");
+            return Ok(());
+        }
+    };
+    let file = match archive.by_name("mcmod.info") {
+        Ok(file) => file,
+        Err(zip::result::ZipError::FileNotFound) => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if file.size() > 1024 * 1024 {
+        tracing::warn!(path = %path.display(), "oversized mcmod.info");
+        return Ok(());
+    }
+    let metadata: Value = match serde_json::from_reader(file) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            tracing::warn!(path = %path.display(), %error, "invalid mcmod.info");
+            return Ok(());
+        }
+    };
+    let Some(list) = metadata
+        .as_array()
+        .or_else(|| metadata["modList"].as_array())
+    else {
+        return Ok(());
+    };
+    for record in list {
+        let Some(id) = record["modid"].as_str().filter(|id| safe_component(id)) else {
+            continue;
+        };
+        let Some(version) = record["version"]
+            .as_str()
+            .filter(|version| !version.is_empty())
+        else {
+            continue;
+        };
+        result.push(Candidate {
+            path: path.to_path_buf(),
+            id: id.to_owned(),
+            version: version.to_owned(),
+            display_name: record["name"].as_str().unwrap_or(id).to_owned(),
+        });
+    }
+    Ok(())
 }
 
 fn version_matches(version: &str, range: Option<&str>) -> bool {
@@ -155,7 +170,18 @@ pub fn resolve_mods(
     if selected.is_empty() {
         return Ok(Vec::new());
     }
-    let candidates = candidates(supplied)?;
+    let mut candidates = candidates(supplied)?;
+    for hash in selected
+        .iter()
+        .filter_map(|record| record.file_hint.as_ref()?.sha256.as_deref())
+    {
+        if hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            let file = cache.join(format!("{}.jar", hash.to_ascii_lowercase()));
+            if file.is_file() && sha256(&file)?.eq_ignore_ascii_case(hash) {
+                read_metadata(&file, &mut candidates)?;
+            }
+        }
+    }
     let mut resolved = Vec::new();
     for record in selected {
         let range = record
@@ -229,7 +255,6 @@ pub fn resolve_mods(
         });
     }
     resolved.sort_by(|left, right| left.mod_id.cmp(&right.mod_id));
-    resolved.dedup_by(|left, right| left.mod_id == right.mod_id && left.sha256 == right.sha256);
     Ok(resolved)
 }
 
@@ -286,7 +311,15 @@ pub fn verify_mods(mods: &[LockedMod], destination: &Path) -> Result<(), Error> 
     let expected: std::collections::HashSet<_> =
         mods.iter().map(jar_name).collect::<Result<_, _>>()?;
     for entry in fs::read_dir(destination)? {
-        let path = entry?.path();
+        let entry = entry?;
+        let path = entry.path();
+        let kind = entry.file_type()?;
+        if kind.is_dir() || kind.is_symlink() {
+            return Err(Error::Config(format!(
+                "unexpected entry in instance mods: {}",
+                path.display()
+            )));
+        }
         if path
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("jar"))

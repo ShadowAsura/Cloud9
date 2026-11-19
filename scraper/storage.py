@@ -46,6 +46,25 @@ def review_fields(node, path=""):
             yield from review_fields(value, f"{path}/{token}")
 
 
+def check_ids(document):
+    def visit(node, remaining, path=""):
+        if not remaining:
+            ids = [entry["id"] for entry in node]
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"duplicate stable IDs at {path}")
+            return
+        field, *rest = remaining
+        if field == "*":
+            for index, entry in enumerate(node):
+                visit(entry, rest, f"{path}/{index}")
+        elif field in node:
+            visit(node[field], rest, f"{path}/{field}")
+    for path in ("mods", "villagers", "villagers/*/trades", "villagers/*/trades/*/buy",
+                 "center/blocks", "center/chests", "center/chests/*/slots",
+                 "center/generators", "findings", "mob_tags"):
+        visit(document, path.split("/"))
+
+
 def apply_overrides(document, overrides):
     OVERRIDES.validate(overrides)
     result = json.loads(json.dumps(document))
@@ -72,7 +91,7 @@ def apply_overrides(document, overrides):
                 cursor = parent[token]
             except (KeyError, IndexError, TypeError) as error:
                 raise ValueError(f"missing override target {patch['path']}") from error
-        if "expected" in patch and cursor != patch["expected"] and cursor != patch["value"]:
+        if cursor != patch.get("expected", patch["value"]) and cursor != patch["value"]:
             LOG.warning("scrape disagrees with override baseline at %s", patch["path"])
         parent[token] = patch["value"]
     return result
@@ -118,17 +137,21 @@ class Catalog:
     def write(self, document, overrides_dir):
         MANIFEST.validate(document)
         video_id = document["episode"]["video_id"]
+        if video_id.upper() in {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(10)),
+                               *(f"LPT{i}" for i in range(10))}:
+            raise ValueError("episode ID is reserved on Windows")
         override_path = Path(overrides_dir) / f"{video_id}.json"
         if override_path.is_file():
             document = apply_overrides(document, json.loads(override_path.read_text(encoding="utf-8")))
         MANIFEST.validate(document)
+        check_ids(document)
         episode = document["episode"]
         if episode["video_id"] != video_id:
             raise ValueError("override cannot change the episode identity")
         tags = set()
         for mod in document["mods"]:
             tags.update(tag.casefold() for tag in [mod["id"], mod["display_name"]["value"], *mod["aliases"]])
-        tags.update(str(tag).casefold() for tag in document.get("mob_tags", []))
+        tags.update(tag["value"].casefold() for tag in document.get("mob_tags", []))
         payload = encode(document)
         with closing(self.connect()) as db, db:
             db.execute(
@@ -145,5 +168,16 @@ class Catalog:
             )
             db.execute("DELETE FROM episode_tags WHERE video_id = ?", (video_id,))
             db.executemany("INSERT INTO episode_tags VALUES (?, ?)", [(video_id, tag) for tag in sorted(tags)])
-            atomic_write(self.output / "episodes" / f"{video_id}.json", payload)
+        self.sync(video_id)
         return document
+
+    def sync(self, video_id=None):
+        """Rebuild portable JSON from the committed catalog after an interrupted write."""
+        with closing(self.connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            rows = db.execute(
+                "SELECT video_id, manifest_json FROM episodes WHERE ?1 IS NULL OR video_id = ?1",
+                (video_id,),
+            )
+            for identity, manifest in rows:
+                atomic_write(self.output / "episodes" / f"{identity}.json", manifest.encode("utf-8"))

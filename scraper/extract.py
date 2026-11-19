@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
+from hashlib import sha256
 import re
 from typing import Protocol
 
@@ -12,6 +13,8 @@ MODS = {
     "orespawn": ("companion", "OreSpawn", ("orespawn", "ore spawn")),
     "mutant-creatures": ("companion", "Mutant Creatures", ("mutant creatures", "mutant creature")),
 }
+MOBS = ("Mutant Creeper", "Mutant Zombie", "Mutant Skeleton", "Mutant Enderman",
+        "The King", "The Queen", "Mobzilla", "Ender Dragon", "Wither")
 MODE = {
     "challenge_games": re.compile(r"challenge games?", re.I),
     "lucky_block_bedwars": re.compile(r"bed[ -]?wars", re.I),
@@ -70,7 +73,11 @@ def select(candidates, *, review=False):
     status = "needs_review" if review or best["confidence"] < .75 else "auto"
     result = dict(best, status=status)
     if len(ranked) > 1:
-        result["alternatives"] = ranked[1:]
+        alternatives = {}
+        for entry in ranked[1:]:
+            key = sha256(repr(sorted(entry.items())).encode()).hexdigest()[:16]
+            alternatives.setdefault(key, dict(id=key, **entry))
+        result["alternatives"] = list(alternatives.values())
     return result
 
 
@@ -84,6 +91,8 @@ def title_key(title):
 
 def duplicate_title(left, right):
     a, b = title_key(left), title_key(right)
+    if re.findall(r"\d+", a) != re.findall(r"\d+", b):
+        return False
     return bool(a and b and (a == b or (min(len(a), len(b)) >= 22
                                        and SequenceMatcher(None, a, b).ratio() >= .96)))
 
@@ -150,6 +159,9 @@ def extract(recording, plugin: Extractor | None = None):
         mentions, mod_versions = [], []
         for text, source, weight, seconds in sources:
             score = mod_matches(text, aliases, source.startswith("caption@"))
+            if not score and role == "lucky" and seconds is None and text == recording.title:
+                if re.search(rf"\b{re.escape(key)}\b", text, re.I):
+                    score = .77
             if score:
                 mentions.append(candidate(name, min(weight, score), source, text, seconds))
             for alias in aliases:
@@ -178,10 +190,29 @@ def extract(recording, plugin: Extractor | None = None):
         findings["multiple-lucky"] = dict(id="multiple-lucky", **select([
             candidate("Verify compatibility of multiple Lucky Block addons.", .9, "manual")
         ], review=True))
+    mobs = []
+    for name in MOBS:
+        mentions = [
+            candidate(name, weight, source, match.group(), seconds)
+            for text, source, weight, seconds in sources
+            if (match := re.search(rf"\b{re.escape(name)}\b", text, re.I))
+        ]
+        if mentions:
+            mobs.append(dict(id=title_key(name).replace(" ", "-"), **select(mentions)))
     if plugin is not None:
         for finding in plugin.extract(recording):
-            if not finding.get("source_span"):
-                raise ValueError("extractor finding requires a source span")
+            span = finding.get("source_span")
+            source = finding.get("source")
+            if source == "description":
+                evidence_text = [recording.title, recording.description]
+            elif source == "chapter":
+                evidence_text = [chapter.text for chapter in recording.chapters]
+            elif isinstance(source, str) and source.startswith("caption@"):
+                evidence_text = [caption.text for caption in recording.captions if caption.caption_source == source]
+            else:
+                evidence_text = []
+            if not isinstance(span, str) or not span or not any(span in text for text in evidence_text):
+                raise ValueError("extractor finding must quote its recorded source span")
             if finding["id"] in findings:
                 raise ValueError(f"duplicate finding {finding['id']}")
             findings[finding["id"]] = finding
@@ -195,5 +226,5 @@ def extract(recording, plugin: Extractor | None = None):
         "mode": mode, "game": game, "mods": mods,
         "map": {"template_id": mode["value"], "overrides": {}},
         "villagers": [], "center": {"kind": kind, "blocks": [], "chests": [], "generators": []},
-        "findings": list(findings.values()),
+        "findings": list(findings.values()), "mob_tags": mobs,
     }

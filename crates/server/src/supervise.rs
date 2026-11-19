@@ -72,13 +72,14 @@ pub fn request(root: &Path, control: Control) -> Result<(), Error> {
     if !active(root)? {
         return Err(Error::Config("no active server supervisor".into()));
     }
-    if let Control::Command(command) = &control {
-        if command.trim().is_empty() || command.len() > 1024 || command.contains(['\r', '\n', '\0'])
-        {
-            return Err(Error::Config(
-                "console command must be a single line".into(),
-            ));
-        }
+    if let Control::Command(command) = &control
+        && (command.trim().is_empty()
+            || command.len() > 1024
+            || command.contains(['\r', '\n', '\0']))
+    {
+        return Err(Error::Config(
+            "console command must be a single line".into(),
+        ));
     }
     let registration: Registration = serde_json::from_reader(File::open(root.join(REGISTRATION))?)?;
     if !registration.mailbox.starts_with(".control-")
@@ -142,9 +143,13 @@ fn run(
     server.preflight()?;
     // Detect an orphaned or conflicting process before opening the match save.
     TcpListener::bind(server.address)?;
-    let (document, round) = server.round()?;
+    let round = match server.round(|| cancelled.load(Ordering::Relaxed)) {
+        Ok(round) => round,
+        Err(_) if cancelled.load(Ordering::Relaxed) => return Ok(()),
+        Err(error) => return Err(error),
+    };
     if !round.world.exists() {
-        round.prepare(&server.templates.join(&document.manifest().map.template_id))?;
+        round.prepare()?;
     }
     let mapping = if server.options.upnp {
         let map = Mapping::create(server.address)?;
@@ -263,16 +268,16 @@ fn monitor(
         if cancelled.load(Ordering::Relaxed) {
             return Ok(End::Stop);
         }
-        if let Some(tunnel) = tunnel {
-            if let Some(exit) = tunnel.0.try_wait()? {
-                return Err(Error::Config(format!("tunnel provider exited ({exit})")));
-            }
+        if let Some(tunnel) = tunnel
+            && let Some(exit) = tunnel.0.try_wait()?
+        {
+            return Err(Error::Config(format!("tunnel provider exited ({exit})")));
         }
-        if let Some(mapping) = mapping {
-            if renewed.elapsed() > Duration::from_secs(900) {
-                mapping.refresh()?;
-                *renewed = Instant::now();
-            }
+        if let Some(mapping) = mapping
+            && renewed.elapsed() > Duration::from_secs(900)
+        {
+            mapping.refresh()?;
+            *renewed = Instant::now();
         }
         let mut changed = false;
         for event in items.try_iter().take(1000) {
@@ -351,7 +356,7 @@ fn player_event(line: &str) -> Option<(&str, bool)> {
         .split("CDATA[")
         .last()?
         .trim_end_matches("]]></log4j:Message>");
-    let text = text.trim_end_matches(|c| c == ']' || c == '>');
+    let text = text.trim_end_matches([']', '>']);
     for (ending, joined) in [(" joined the game", true), (" left the game", false)] {
         if let Some(before) = text.strip_suffix(ending) {
             let name = before.split_whitespace().last()?;
@@ -428,6 +433,26 @@ fn tunnel(server: &Server) -> Result<Option<ManagedChild>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graceful_stop_writes_stdin_and_waits() -> Result<(), Box<dyn std::error::Error>> {
+        #[cfg(windows)]
+        let mut command = {
+            let mut cmd = std::process::Command::new("cmd");
+            cmd.args(["/D", "/C", "set /p c="]);
+            cmd
+        };
+        #[cfg(not(windows))]
+        let mut command = {
+            let mut cmd = std::process::Command::new("sh");
+            cmd.args(["-c", "read line && test \"$line\" = stop"]);
+            cmd
+        };
+        let mut child = command.stdin(Stdio::piped()).spawn()?;
+        stop_child(&mut child, Duration::from_secs(3))?;
+        assert!(child.try_wait()?.is_some_and(|code| code.success()));
+        Ok(())
+    }
 
     #[test]
     fn detects_player_events_and_ignores_chat() {

@@ -29,6 +29,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    CachePrune {
+        #[arg(long, default_value = ".cache/minecraft/mods")]
+        directory: PathBuf,
+        #[arg(long, default_value_t = 4096)]
+        max_mib: u64,
+        #[arg(long, default_value_t = 90)]
+        max_days: u64,
+    },
+    Bundle {
+        instance: PathBuf,
+        destination: PathBuf,
+    },
     Server {
         #[arg(long, global = true, default_value = "server.toml")]
         config: PathBuf,
@@ -90,7 +102,33 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
-    let Command::Server { config, action } = cli.command;
+    let (config, action) = match cli.command {
+        Command::CachePrune {
+            directory,
+            max_mib,
+            max_days,
+        } => {
+            let removed = cloud9_mc::prune_mod_cache(
+                &directory,
+                max_mib.saturating_mul(1024 * 1024),
+                Duration::from_secs(max_days.saturating_mul(86400)),
+            )?;
+            println!("Removed {removed} cached mod file(s)");
+            return Ok(());
+        }
+        Command::Bundle {
+            instance,
+            destination,
+        } => {
+            let count = cloud9_mc::support_bundle(&instance, &destination)?;
+            println!(
+                "Wrote {} with {count} log excerpt(s)",
+                destination.display()
+            );
+            return Ok(());
+        }
+        Command::Server { config, action } => (config, action),
+    };
     let base = fs::canonicalize(&config)?;
     let parent = base
         .parent()

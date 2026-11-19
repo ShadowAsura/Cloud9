@@ -1,4 +1,5 @@
 import argparse
+from importlib import import_module
 import json
 import logging
 from pathlib import Path
@@ -27,6 +28,9 @@ def review_url(url, entry):
 
 def run(args):
     catalog = Catalog(args.output)
+    if args.command == "sync":
+        catalog.sync()
+        return 0
     if args.command == "review":
         for document in catalog.documents():
             episode = document["episode"]
@@ -46,9 +50,15 @@ def run(args):
         ids = args.video or collector.discover(channel=args.channel, playlist=args.playlist,
                                                keyword=args.keyword, limit=args.limit)
         recordings = (collector.fetch(video_id, thumbnails=args.thumbnails) for video_id in ids)
+    plugin = None
+    if args.extractor:
+        module, separator, factory = args.extractor.partition(":")
+        if not separator:
+            raise ValueError("extractor must be module:factory")
+        plugin = getattr(import_module(module), factory)()
     titles = catalog.titles()
     for recording in recordings:
-        document = extract(recording)
+        document = extract(recording, plugin)
         if document is None:
             LOG.info("skipping unclassified video %s", recording.video_id)
             continue
@@ -80,13 +90,17 @@ def main():
     scrape.add_argument("--interval", type=float, default=2)
     scrape.add_argument("--limit", type=int, default=50)
     scrape.add_argument("--thumbnails", action="store_true")
-    commands.add_parser("recorded").add_argument("files", type=Path, nargs="+")
+    scrape.add_argument("--extractor")
+    offline = commands.add_parser("recorded")
+    offline.add_argument("files", type=Path, nargs="+")
+    offline.add_argument("--extractor")
+    commands.add_parser("sync")
     commands.add_parser("seed").add_argument("directory", type=Path)
     commands.add_parser("review").add_argument("--video-id")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
         return run(parser.parse_args())
-    except (OSError, RuntimeError, ValidationError, ValueError) as error:
+    except (OSError, RuntimeError, ValidationError, ValueError, ImportError, AttributeError) as error:
         LOG.error("%s", error)
         return 1
 

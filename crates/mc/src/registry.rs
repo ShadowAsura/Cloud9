@@ -43,14 +43,15 @@ impl Registry {
                 Resolution::Unresolved
             };
         }
-        if let Some(id) = &item.id {
-            if registry.contains_key(id) {
-                return Resolution::Exact(id.clone());
-            }
-        } else if let Some(number) = item.legacy_id {
-            if let Some((id, _)) = registry.iter().find(|(_, value)| **value == number) {
-                return Resolution::Exact(id.clone());
-            }
+        if let Some(id) = &item.id
+            && registry.contains_key(id)
+        {
+            return Resolution::Exact(id.clone());
+        }
+        if let Some(number) = item.legacy_id
+            && let Some((id, _)) = registry.iter().find(|(_, value)| **value == number)
+        {
+            return Resolution::Exact(id.clone());
         }
         let raw = item.raw_text.to_lowercase().replace(' ', "_");
         registry
@@ -90,4 +91,46 @@ fn edit_distance(left: &str, right: &str) -> usize {
         }
     }
     row[right.len()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alias_precedes_registry_and_fuzzy_results_require_review() -> Result<(), serde_json::Error> {
+        let registry = Registry {
+            mod_set_hash: "test".into(),
+            items: BTreeMap::from([
+                ("minecraft:iron_sword".into(), 267),
+                ("minecraft:golden_sword".into(), 283),
+            ]),
+            blocks: BTreeMap::new(),
+        };
+        let item: Item = serde_json::from_value(serde_json::json!({
+            "id": "old:sword", "legacy_id": 267, "raw_text": "gilded sword"
+        }))?;
+        let aliases = BTreeMap::from([(
+            "gilded sword".into(),
+            Alias {
+                id: "minecraft:golden_sword".into(),
+                meta: None,
+                nbt: None,
+            },
+        )]);
+        assert_eq!(
+            registry.resolve(&item, &aliases, false),
+            Resolution::Exact("minecraft:golden_sword".into())
+        );
+        assert_eq!(
+            registry.resolve(&item, &BTreeMap::new(), false),
+            Resolution::Exact("minecraft:iron_sword".into())
+        );
+        let typo: Item = serde_json::from_value(serde_json::json!({"raw_text": "iron swrd"}))?;
+        assert_eq!(
+            registry.resolve(&typo, &aliases, false),
+            Resolution::Suggestion("minecraft:iron_sword".into())
+        );
+        Ok(())
+    }
 }

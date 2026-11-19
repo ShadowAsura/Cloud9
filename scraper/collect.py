@@ -14,6 +14,7 @@ from .storage import atomic_write, encode
 ID = re.compile(r"[A-Za-z0-9_-]{11}")
 TIMER = re.compile(r"^(?:(\d+):)?(\d{2}):(\d{2})\.\d{3} --> ")
 YT_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com"}
+THUMBNAIL_BUDGET = 256 * 1024 * 1024
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
@@ -52,6 +53,24 @@ class YouTube:
         self.executable = executable
         self.last = 0.0
 
+    def prune_thumbnails(self, keep=None):
+        root = self.cache / "thumbnails"
+        images = []
+        for path in root.glob("*"):
+            if path.suffix.lower() in IMAGE_EXTS and path.is_file() and not path.is_symlink():
+                try:
+                    info = path.stat()
+                except FileNotFoundError:
+                    continue
+                images.append((info.st_mtime, info.st_size, path))
+        size = sum(length for _, length, _ in images)
+        for _, length, path in sorted(images):
+            if size <= THUMBNAIL_BUDGET:
+                break
+            if path != keep:
+                path.unlink(missing_ok=True)
+                size -= length
+
     def _run(self, arguments, target):
         time.sleep(max(0, self.interval - (time.monotonic() - self.last)))
         try:
@@ -61,6 +80,8 @@ class YouTube:
                  *arguments, "--", target],
                 capture_output=True, encoding="utf-8", errors="replace", timeout=180, check=False,
             )
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError("yt-dlp metadata request timed out") from error
         finally:
             self.last = time.monotonic()
         if result.returncode:
@@ -124,6 +145,7 @@ class YouTube:
                     if path.stat().st_size <= 8 * 1024 * 1024:
                         atomic_write(output, path.read_bytes())
                         thumbnail = str(output)
+                        self.prune_thumbnails(keep=output)
                     break
             date = metadata.get("upload_date") or ""
             if re.fullmatch(r"\d{8}", date):

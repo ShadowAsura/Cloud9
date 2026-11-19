@@ -170,18 +170,28 @@ pub fn load_aliases(
 ) -> Result<BTreeMap<String, Alias>, Error> {
     let mut result = BTreeMap::new();
     for record in mods {
-        if [&record.mod_id, &record.version].iter().any(|segment| {
-            segment.is_empty()
-                || !segment.as_bytes()[0].is_ascii_alphanumeric()
-                || !segment
-                    .bytes()
-                    .all(|c| c.is_ascii_alphanumeric() || b".-_".contains(&c))
-        }) {
-            return Err(Error::Setup("invalid alias path segment".into()));
+        if record.mod_id.is_empty()
+            || !record
+                .mod_id
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || b".-_".contains(&c))
+            || record.mod_id == "."
+            || record.mod_id == ".."
+        {
+            return Err(Error::Setup("invalid alias addon ID".into()));
+        }
+        let mut version = String::new();
+        use std::fmt::Write as _;
+        for byte in record.version.bytes() {
+            if byte.is_ascii_alphanumeric() || b".-_".contains(&byte) {
+                version.push(char::from(byte));
+            } else {
+                let _ = write!(version, "%{byte:02X}");
+            }
         }
         let path = directory
             .join(&record.mod_id)
-            .join(format!("{}.json", record.version));
+            .join(format!("{version}.json"));
         if path.is_file() {
             let aliases: BTreeMap<String, Alias> = serde_json::from_reader(File::open(&path)?)?;
             for (name, alias) in aliases {
@@ -229,7 +239,17 @@ impl SetupApplier for Helper {
 pub struct EpisodeWorld {
     pub world: PathBuf,
     snapshot: PathBuf,
+    template: PathBuf,
     setup: Setup,
+}
+
+pub struct SetupContext<'a> {
+    pub templates: &'a Path,
+    pub aliases: &'a Path,
+    pub mods: &'a [cloud9_mc::LockedMod],
+    pub registry: &'a Registry,
+    pub mod_set_hash: &'a str,
+    pub run_id: &'a str,
 }
 
 impl EpisodeWorld {
@@ -237,12 +257,7 @@ impl EpisodeWorld {
         document: &Document,
         world: PathBuf,
         snapshot: PathBuf,
-        templates: &Path,
-        alias_root: &Path,
-        mods: &[cloud9_mc::LockedMod],
-        registry: &Registry,
-        hash: &str,
-        run_id: &str,
+        context: SetupContext<'_>,
     ) -> Result<Self, Error> {
         let manifest = document.manifest();
         let name = &manifest.map.template_id;
@@ -252,25 +267,33 @@ impl EpisodeWorld {
         {
             return Err(Error::Setup("unsupported world template ID".into()));
         }
-        let template = templates.join(name);
+        let template = context.templates.join(name);
         let starter = match manifest.mode.value {
             Mode::ChallengeGames => name == "challenge_games",
             Mode::LuckyBlockBedwars => name == "lucky_block_bedwars",
         };
         if starter && !template.exists() {
-            create_builtin_template(templates, manifest.mode.value)?;
+            create_builtin_template(context.templates, manifest.mode.value)?;
         }
-        let aliases = load_aliases(alias_root, mods)?;
-        let setup = Setup::verified(document, run_id, hash, registry, &aliases, starter)?;
+        let aliases = load_aliases(context.aliases, context.mods)?;
+        let setup = Setup::verified(
+            document,
+            context.run_id,
+            context.mod_set_hash,
+            context.registry,
+            &aliases,
+            starter,
+        )?;
         Ok(Self {
             world,
             snapshot,
+            template,
             setup,
         })
     }
 
-    pub fn prepare(&self, template: &Path) -> Result<(), Error> {
-        prepare_round(template, &self.world, &self.snapshot, &self.setup)
+    pub fn prepare(&self) -> Result<(), Error> {
+        prepare_round(&self.template, &self.world, &self.snapshot, &self.setup)
     }
 
     pub fn reset(&self) -> Result<PathBuf, Error> {
@@ -358,7 +381,10 @@ fn copy_tree(source: &Path, target: &Path) -> Result<(), Error> {
         let entry = entry?;
         let kind = entry.file_type()?;
         let name = entry.file_name();
-        if name == "session.lock" {
+        if ["session.lock", "runner_applied.txt", "runner_setup.json"]
+            .iter()
+            .any(|skip| name == *skip)
+        {
             continue;
         }
         if kind.is_dir() {
@@ -458,6 +484,32 @@ fn publish(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
+/// Write a multiplayer bookmark while preserving the other entries in servers.dat.
+pub fn bookmark_server(instance: &Path, name: &str, address: &str) -> Result<(), Error> {
+    let path = instance.join("servers.dat");
+    let mut state: HashMap<String, Tag> = if path.is_file() {
+        fastnbt::from_bytes(&fs::read(&path)?)?
+    } else {
+        HashMap::new()
+    };
+    let servers = state
+        .entry("servers".into())
+        .or_insert_with(|| Tag::List(Vec::new()));
+    let Tag::List(servers) = servers else {
+        return Err(Error::Setup(
+            "servers.dat has an invalid servers list".into(),
+        ));
+    };
+    if !servers.iter().any(|record| {
+        matches!(record, Tag::Compound(fields) if matches!(fields.get("ip"), Some(Tag::String(ip)) if ip == address))
+    }) {
+        servers.push(Tag::Compound(HashMap::from([
+            ("name".into(), Tag::String(name.into())), ("ip".into(), Tag::String(address.into())),
+        ])));
+    }
+    publish(&path, &fastnbt::to_bytes(&state)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,30 +550,4 @@ mod tests {
         assert!(world.join("runner_setup.json").is_file());
         Ok(())
     }
-}
-
-/// Write a multiplayer bookmark while preserving the other entries in servers.dat.
-pub fn bookmark_server(instance: &Path, name: &str, address: &str) -> Result<(), Error> {
-    let path = instance.join("servers.dat");
-    let mut state: HashMap<String, Tag> = if path.is_file() {
-        fastnbt::from_bytes(&fs::read(&path)?)?
-    } else {
-        HashMap::new()
-    };
-    let servers = state
-        .entry("servers".into())
-        .or_insert_with(|| Tag::List(Vec::new()));
-    let Tag::List(servers) = servers else {
-        return Err(Error::Setup(
-            "servers.dat has an invalid servers list".into(),
-        ));
-    };
-    if !servers.iter().any(|record| {
-        matches!(record, Tag::Compound(fields) if matches!(fields.get("ip"), Some(Tag::String(ip)) if ip == address))
-    }) {
-        servers.push(Tag::Compound(HashMap::from([
-            ("name".into(), Tag::String(name.into())), ("ip".into(), Tag::String(address.into())),
-        ])));
-    }
-    publish(&path, &fastnbt::to_bytes(&state)?)
 }

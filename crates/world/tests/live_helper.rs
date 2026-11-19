@@ -2,7 +2,7 @@ use cloud9_core::Document;
 use cloud9_mc::{
     ClientRuntime, Installer, Profile, bootstrap_client_registry, create_instance_with_helper,
 };
-use cloud9_world::EpisodeWorld;
+use cloud9_world::{EpisodeWorld, SetupContext};
 use std::path::PathBuf;
 
 #[test]
@@ -35,14 +35,16 @@ fn discover_registry_and_prepare_world() -> Result<(), Box<dyn std::error::Error
         &document,
         instance.root.join("saves/Cloud9"),
         instance.root.join("snapshot"),
-        &templates,
-        temp.path(),
-        &instance.mods,
-        &registry,
-        &instance.mod_set_hash,
-        "test",
+        SetupContext {
+            templates: &templates,
+            aliases: temp.path(),
+            mods: &instance.mods,
+            registry: &registry,
+            mod_set_hash: &instance.mod_set_hash,
+            run_id: "test",
+        },
     )?;
-    episode.prepare(&templates.join("lucky_block_bedwars"))?;
+    episode.prepare()?;
     assert!(episode.world.join("runner_setup.json").is_file());
     Ok(())
 }

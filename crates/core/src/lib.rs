@@ -312,28 +312,51 @@ pub fn migrate(source: Value) -> Result<Value, Error> {
     }
 }
 
+/// Validate sibling IDs only in manifest-defined record arrays. Extension data
+/// may use repeating IDs with a different meaning.
 fn validate_stable_ids(value: &Value, path: &str) -> Result<(), Error> {
-    match value {
-        Value::Array(entries) => {
-            let mut ids = HashSet::new();
-            for (index, entry) in entries.iter().enumerate() {
-                if let Some(id) = entry.get("id").and_then(Value::as_str) {
-                    if !ids.insert(id) {
-                        return Err(invalid(path, format!("duplicate stable id {id}")));
-                    }
+    for list in [
+        "mods",
+        "villagers",
+        "villagers/*/trades",
+        "villagers/*/trades/*/buy",
+        "center/blocks",
+        "center/chests",
+        "center/chests/*/slots",
+        "center/generators",
+        "findings",
+        "mob_tags",
+    ] {
+        check_list(value, &list.split('/').collect::<Vec<_>>(), path)?;
+    }
+    Ok(())
+}
+
+fn check_list(value: &Value, parts: &[&str], path: &str) -> Result<(), Error> {
+    match parts.split_first() {
+        Some((&"*", remaining)) => {
+            if let Some(array) = value.as_array() {
+                for (index, entry) in array.iter().enumerate() {
+                    check_list(entry, remaining, &format!("{path}/{index}"))?;
                 }
-                validate_stable_ids(entry, &format!("{path}/{index}"))?;
             }
         }
-        Value::Object(fields) => {
-            for (key, value) in fields {
-                if matches!(key.as_str(), "nbt" | "overrides") {
-                    continue;
-                }
-                validate_stable_ids(value, &format!("{path}/{key}"))?;
+        Some((field, remaining)) => {
+            if let Some(child) = value.get(*field) {
+                check_list(child, remaining, &format!("{path}/{field}"))?;
             }
         }
-        _ => {}
+        None => {
+            let mut used = HashSet::new();
+            for entry in value.as_array().into_iter().flatten() {
+                let id = entry["id"]
+                    .as_str()
+                    .ok_or_else(|| invalid(path, "missing record id"))?;
+                if !used.insert(id) {
+                    return Err(invalid(path, format!("duplicate stable id {id}")));
+                }
+            }
+        }
     }
     Ok(())
 }

@@ -266,7 +266,9 @@ impl Browser {
 impl eframe::App for Browser {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         self.thumbs.update(ctx);
-        self.runner.poll(ctx);
+        if self.runner.poll(ctx) {
+            self.screen = Screen::Running;
+        }
         self.servers.poll(ctx);
         egui::TopBottomPanel::top("header")
             .frame(
@@ -304,7 +306,9 @@ impl eframe::App for Browser {
                         return;
                     }
                     Screen::Running => {
-                        self.runner.running(ui);
+                        if self.runner.running(ui) {
+                            self.screen = Screen::RunPlan;
+                        }
                         return;
                     }
                     Screen::Servers => {

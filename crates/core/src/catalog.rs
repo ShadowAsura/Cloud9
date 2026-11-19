@@ -59,7 +59,7 @@ impl Catalog {
              WHERE (?1 = '' OR instr(lower(e.title), lower(?1)) > 0 OR lower(e.video_id) = lower(?1))
                AND (?2 = '' OR e.mode = ?2)
                AND (?3 = '' OR EXISTS (
-                    SELECT 1 FROM episode_tags t WHERE t.video_id = e.video_id AND t.tag = ?3
+                    SELECT 1 FROM episode_tags t WHERE t.video_id = e.video_id AND instr(t.tag, lower(?3)) > 0
                ))
                AND (?4 = '' OR e.mc_version = ?4)
              ORDER BY e.upload_date DESC, e.video_id

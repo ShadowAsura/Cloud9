@@ -27,6 +27,8 @@ pub struct Servers {
     current: Option<Box<Server>>,
     status: Option<Status>,
     pending: Option<Receiver<ResultEvent>>,
+    worker: Option<std::thread::JoinHandle<()>>,
+    supervises: bool,
     network: Option<Receiver<String>>,
     cancellation: Arc<AtomicBool>,
     next_refresh: Instant,
@@ -46,6 +48,8 @@ impl Servers {
             current: None,
             status: None,
             pending: None,
+            worker: None,
+            supervises: false,
             network: None,
             cancellation: Arc::new(AtomicBool::new(false)),
             next_refresh: Instant::now(),
@@ -63,6 +67,8 @@ impl Servers {
             .and_then(|channel| channel.try_recv().ok())
         {
             self.pending = None;
+            self.worker.take();
+            self.supervises = false;
             match event {
                 ResultEvent::Opened(server) => {
                     self.message = format!("Server ready at {}", server.address);
@@ -120,12 +126,11 @@ impl Servers {
             if ui
                 .add_enabled(self.current.is_some(), egui::Button::new("Export"))
                 .clicked()
+                && let Some(server) = &self.current
             {
-                if let Some(server) = &self.current {
-                    let result = Matchup::from_server(server)
-                        .and_then(|share| share.save(Path::new(&self.share)));
-                    self.report(result, "Matchup exported");
-                }
+                let result = Matchup::from_server(server)
+                    .and_then(|share| share.save(Path::new(&self.share)));
+                self.report(result, "Matchup exported");
             }
         });
         ui.separator();
@@ -386,8 +391,8 @@ impl Servers {
         let slug = self.slug.clone();
         let options = self.options.clone();
         let accept_eula = self.accept;
-        self.run_task("Installing Forge server", move || {
-            let profile = cloud9_mc::Profile::primary()?;
+        self.run_task("Installing Forge server", false, move || {
+            let profile = cloud9_mc::Profile::selected()?;
             let server = Server::create(
                 &document,
                 Create {
@@ -412,7 +417,7 @@ impl Servers {
         let accepted = self.accept;
         self.cancellation.store(false, Ordering::Relaxed);
         let cancel = self.cancellation.clone();
-        self.run_task("Preparing the world and starting Forge", move || {
+        self.run_task("Preparing the world and starting Forge", true, move || {
             let server = Server::open(&root)?;
             if accepted && !server.eula_accepted() {
                 server.accept_eula()?;
@@ -425,22 +430,29 @@ impl Servers {
     fn run_task(
         &mut self,
         message: &str,
+        supervises: bool,
         work: impl FnOnce() -> Result<ResultEvent, cloud9_server::Error> + Send + 'static,
     ) {
         self.message = message.into();
         self.error = false;
         let (send, receive) = channel();
         self.pending = Some(receive);
-        std::thread::spawn(move || {
+        self.supervises = supervises;
+        self.worker = Some(std::thread::spawn(move || {
             let result = work().unwrap_or_else(|error| ResultEvent::Error(error.to_string()));
             let _ = send.send(result);
-        });
+        }));
     }
 }
 
 impl Drop for Servers {
     fn drop(&mut self) {
         self.cancellation.store(true, Ordering::Relaxed);
+        if self.supervises
+            && let Some(worker) = self.worker.take()
+        {
+            let _ = worker.join();
+        }
     }
 }
 

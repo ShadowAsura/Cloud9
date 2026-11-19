@@ -79,3 +79,16 @@ impl Drop for Mapping {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn probes_local_tcp_listener() -> Result<(), Error> {
+        let socket = TcpListener::bind("127.0.0.1:0")?;
+        let address = socket.local_addr()?.to_string();
+        assert!(reachable(&address)?);
+        Ok(())
+    }
+}

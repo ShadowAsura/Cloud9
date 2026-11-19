@@ -61,3 +61,13 @@ cargo run -p runner-cli -- server stop
 To expose a port, confirm internet exposure before enabling UPnP. A tunnel can be configured with `settings.tunnel` as an executable and argument array, `settings.tunnel_address` as the public join address, and `settings.authorize_public = true`. The provider receives `CLOUD9_LOCAL_ADDRESS`. A TCP check reports reachability from the machine issuing the test. Cloud 9 applies Mojang's legacy server logging mitigation. [Minecraft server logging guidance](https://www.minecraft.net/en-us/article/important-message--security-vulnerability-java-edition)
 
 Export a `.matchup` file from Servers or with `runner-cli server export round.matchup`. The recipient imports it from Servers after indexing the same episode, supplies missing mod jars, then signs in and joins. The matchup pins server-side mod hashes and carries a manifest ID and join address.
+
+## M7 · Maintenance
+
+GitHub Actions tests the Rust workspace and offline Python scraper on Windows and Linux. Successful runs provide desktop and headless binaries in build artifacts. The helper and game dependencies are built or acquired separately.
+
+Use `runner-cli bundle instances/INSTANCE report.zip` or pass a server folder to collect local diagnostic log excerpts. Review the archive before sharing. `runner-cli cache-prune` removes older content-addressed mod cache entries. Existing runs have their own copies. The scraper keeps its personal thumbnail cache within 256 MiB. If an interrupted scrape leaves a JSON export missing, run `python -m scraper sync` to rebuild exports from SQLite.
+
+An optional scraper extractor can be supplied with `--extractor module:factory`. The factory returns an object implementing `Extractor`. Findings must have a source span and pass manifest validation.
+
+Set `CLOUD9_PROFILE` to a JSON runtime profile for another compatible legacy Forge target. The headless form accepts the same fields in a TOML profile. A profile needs Java, Forge artifacts and hashes, and its server logging configuration. Use a helper built for the targeted Minecraft version.

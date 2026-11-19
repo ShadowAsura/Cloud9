@@ -48,6 +48,15 @@ pub struct Profile {
     pub forge_version_id: String,
     pub installer_sha1: String,
     pub universal_sha1: String,
+    #[serde(default)]
+    pub server_logging: Option<ServerLogging>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerLogging {
+    pub filename: String,
+    pub url: String,
+    pub sha1: String,
 }
 
 impl Profile {
@@ -55,6 +64,14 @@ impl Profile {
         Ok(serde_json::from_str(include_str!(
             "../../../schema/profiles/default.json"
         ))?)
+    }
+
+    /// Load a locally supplied legacy Forge runtime profile, or use the standard profile.
+    pub fn selected() -> Result<Self, Error> {
+        match std::env::var_os("CLOUD9_PROFILE") {
+            Some(path) => Ok(serde_json::from_reader(fs::File::open(path)?)?),
+            None => Self::primary(),
+        }
     }
 
     pub fn check_manifest(&self, manifest: &cloud9_core::Manifest) -> Result<(), Error> {
@@ -145,6 +162,13 @@ pub fn discover_java(profile: &Profile, explicit: Option<&Path>) -> Result<PathB
             }
         }
     }
+    if let Ok(entries) = fs::read_dir(".cache/jdk") {
+        candidates.extend(
+            entries
+                .flatten()
+                .map(|entry| entry.path().join("bin").join(executable)),
+        );
+    }
     if let Ok(entries) = fs::read_dir("/usr/lib/jvm") {
         candidates.extend(
             entries
@@ -186,7 +210,8 @@ pub(crate) fn safe_component(component: &str) -> bool {
         .to_ascii_uppercase();
     !component.is_empty()
         && component.len() <= 128
-        && component.as_bytes()[0].is_ascii_alphanumeric()
+        && (component.as_bytes()[0].is_ascii_alphanumeric()
+            || b"_-".contains(&component.as_bytes()[0]))
         && component
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || b"._-".contains(&c))
@@ -197,6 +222,10 @@ pub(crate) fn safe_component(component: &str) -> bool {
             && stem.as_bytes()[3].is_ascii_digit())
 }
 mod bootstrap;
-pub use bootstrap::{await_registry, bootstrap_client_registry, read_registry};
+pub use bootstrap::{
+    await_registry, await_registry_until, bootstrap_client_registry, read_registry,
+};
 mod server_runtime;
 pub use server_runtime::ServerRuntime;
+mod maintenance;
+pub use maintenance::{prune_mod_cache, support_bundle};

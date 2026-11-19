@@ -60,6 +60,9 @@ class ExtractionTest(unittest.TestCase):
             self.assertEqual(updated["mods"][1]["mod_id"]["value"], "local_id")
             exported = catalog.output / "episodes" / "recorded-01.json"
             self.assertEqual(json.loads(exported.read_text(encoding="utf-8")), catalog.documents()[0])
+            exported.unlink()
+            catalog.sync()
+            self.assertEqual(json.loads(exported.read_text(encoding="utf-8")), updated)
 
     def test_metadata_only_command(self):
         with tempfile.TemporaryDirectory() as temporary, patch("scraper.collect.subprocess.run") as run:
@@ -80,3 +83,4 @@ class ExtractionTest(unittest.TestCase):
         self.assertEqual(mod_matches(captions[0].text, ["spiral lucky block"], True), .65)
         self.assertTrue(duplicate_title("Spiral Challenge Games!", "Spiral Challenge Games"))
         self.assertFalse(duplicate_title("Spiral Challenge Games vs. Oak", "Spiral Challenge Games vs. Birch"))
+        self.assertFalse(duplicate_title("Spiral Challenge Games part 1", "Spiral Challenge Games part 2"))

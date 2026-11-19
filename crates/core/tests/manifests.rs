@@ -77,3 +77,11 @@ fn rejects_duplicate_ids_and_invalid_evidence() {
         .remove("timestamp_seconds");
     assert!(Document::from_value(source).is_err());
 }
+
+#[test]
+fn extension_arrays_keep_their_own_identity_rules() -> Result<(), Error> {
+    let mut source = fixture(4);
+    source["future_extension"]["records"] = json!([{"id":"shared"},{"id":"shared"}]);
+    assert_eq!(Document::from_value(source.clone())?.source(), &source);
+    Ok(())
+}

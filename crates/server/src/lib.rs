@@ -8,7 +8,7 @@ pub use supervise::{Control, Status, active, request, status, supervise};
 
 use cloud9_core::Document;
 use cloud9_mc::{
-    Installer, LockedMod, Profile, Registry, ServerRuntime, await_registry, capture_logs,
+    Installer, LockedMod, Profile, Registry, ServerRuntime, await_registry_until, capture_logs,
     discover_java, helper_mod, mod_set_hash, read_registry, resolve_mods, stage_mods, verify_mods,
 };
 use cloud9_world::EpisodeWorld;
@@ -383,7 +383,7 @@ impl Server {
         )
     }
 
-    fn registry(&self) -> Result<Registry, Error> {
+    fn registry(&self, cancelled: impl Fn() -> bool) -> Result<Registry, Error> {
         let cache = self
             .registry_cache
             .join(format!("{}.json", self.mod_set_hash));
@@ -413,7 +413,8 @@ impl Server {
             if let Some(output) = child.stderr.take() {
                 capture_logs(output, log, Vec::new());
             }
-            let registry = await_registry(&mut child, &receiver, &dump, &self.mod_set_hash);
+            let registry =
+                await_registry_until(&mut child, &receiver, &dump, &self.mod_set_hash, cancelled);
             supervise::stop_child(&mut child, Duration::from_secs(20))?;
             Ok(registry?)
         })();
@@ -423,22 +424,24 @@ impl Server {
         Ok(registry)
     }
 
-    fn round(&self) -> Result<(Document, EpisodeWorld), Error> {
+    fn round(&self, cancelled: impl Fn() -> bool) -> Result<EpisodeWorld, Error> {
         let document = Document::load(&self.root.join("episode.json"))?;
         self.profile.check_manifest(document.manifest())?;
-        let registry = self.registry()?;
+        let registry = self.registry(cancelled)?;
         let round = EpisodeWorld::open(
             &document,
             self.root.join(WORLD),
             self.root.join("round-snapshot"),
-            &self.templates,
-            &self.aliases,
-            &self.mods,
-            &registry,
-            &self.mod_set_hash,
-            "cloud9-round",
+            cloud9_world::SetupContext {
+                templates: &self.templates,
+                aliases: &self.aliases,
+                mods: &self.mods,
+                registry: &registry,
+                mod_set_hash: &self.mod_set_hash,
+                run_id: "cloud9-round",
+            },
         )?;
-        Ok((document, round))
+        Ok(round)
     }
 
     fn lock(&self) -> Result<File, Error> {
