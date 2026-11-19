@@ -1,4 +1,4 @@
-use crate::{ACCENT, BORDER, ERROR, GROUND, MUTED, OK, PANEL, SURFACE, TEXT, TEXT_DIM};
+use crate::{ACCENT, BORDER, ERROR, GROUND, MUTED, OK, SURFACE, TEXT_DIM};
 use cloud9_mc::Instance;
 use eframe::egui::{self, RichText, Stroke, vec2};
 use std::{
@@ -116,24 +116,27 @@ impl Instances {
                                         .small(),
                                 );
                             });
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui
-                                    .add(
-                                        egui::Button::new(
-                                            RichText::new("Open")
-                                                .small()
-                                                .strong()
-                                                .color(GROUND),
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                RichText::new("Open")
+                                                    .small()
+                                                    .strong()
+                                                    .color(GROUND),
+                                            )
+                                            .fill(ACCENT),
                                         )
-                                        .fill(ACCENT),
-                                    )
-                                    .clicked()
-                                {
-                                    selection = Some(card.path.clone());
-                                }
-                                ui.add_space(8.0);
-                                ui.colored_label(card.state.color(), card.state.label());
-                            });
+                                        .clicked()
+                                    {
+                                        selection = Some(card.path.clone());
+                                    }
+                                    ui.add_space(8.0);
+                                    ui.colored_label(card.state.color(), card.state.label());
+                                },
+                            );
                         });
                     });
                 ui.add_space(10.0);

@@ -12,6 +12,10 @@ function Fail($msg) { Write-Output "GATE FAILED: $msg"; exit 1 }
 Write-Output '== gate 1: cargo check =='
 cargo check -p cloud9-app; if ($LASTEXITCODE -ne 0) { Fail 'cargo check' }
 
+Write-Output '== gate 1b: fmt + clippy (mirrors CI verify.yml) =='
+cargo fmt --all --check; if ($LASTEXITCODE -ne 0) { Fail 'cargo fmt --check' }
+cargo clippy --locked --workspace --all-targets -- -D warnings; if ($LASTEXITCODE -ne 0) { Fail 'cargo clippy -D warnings' }
+
 Write-Output '== gate 2: cargo test =='
 cargo test -p cloud9-app; if ($LASTEXITCODE -ne 0) { Fail 'cargo test' }
 

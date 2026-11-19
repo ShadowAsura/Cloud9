@@ -1,8 +1,6 @@
-use crate::{
-    ACCENT, BORDER, ERROR, GROUND, MUTED, OK, PANEL, SURFACE, TEXT, TEXT_DIM, runner::Runner,
-};
+use crate::{ACCENT, BORDER, ERROR, GROUND, MUTED, OK, TEXT_DIM, runner::Runner};
 use cloud9_server::{Control, Create, EULA_URL, Matchup, Options, Server, Status};
-use eframe::egui::{self, Frame, RichText, Stroke, vec2};
+use eframe::egui::{self, Frame, RichText, Stroke};
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
@@ -179,9 +177,7 @@ impl Servers {
 
         // Capacity & gameplay.
         ui.horizontal(|ui| {
-            ui.add(
-                egui::DragValue::new(&mut self.options.port).prefix("Port "),
-            );
+            ui.add(egui::DragValue::new(&mut self.options.port).prefix("Port "));
             ui.add_space(10.0);
             ui.add(
                 egui::DragValue::new(&mut self.options.max_players)
@@ -262,10 +258,10 @@ impl Servers {
         let active = cloud9_server::active(&root).unwrap_or(false);
         let accepted = server.eula_accepted();
         let online_mode = server.options.online_mode;
-        let address = self
-            .status
-            .as_ref()
-            .map_or_else(|| server.address.to_string(), |status| status.address.clone());
+        let address = self.status.as_ref().map_or_else(
+            || server.address.to_string(),
+            |status| status.address.clone(),
+        );
         let phase = self
             .status
             .as_ref()
@@ -304,13 +300,19 @@ impl Servers {
                         "Stopping server",
                     );
                 }
-                if ui.add_enabled(active, egui::Button::new("Restart")).clicked() {
+                if ui
+                    .add_enabled(active, egui::Button::new("Restart"))
+                    .clicked()
+                {
                     self.report(
                         cloud9_server::request(&root, Control::Restart),
                         "Restart requested",
                     );
                 }
-                if ui.add_enabled(active, egui::Button::new("Reset round")).clicked() {
+                if ui
+                    .add_enabled(active, egui::Button::new("Reset round"))
+                    .clicked()
+                {
                     self.report(
                         cloud9_server::request(&root, Control::Reset),
                         "Round reset requested",
@@ -383,8 +385,7 @@ impl Servers {
         // Console command.
         ui.horizontal(|ui| {
             ui.add(
-                egui::TextEdit::singleline(&mut self.console)
-                    .hint_text("Server console command"),
+                egui::TextEdit::singleline(&mut self.console).hint_text("Server console command"),
             );
             if ui
                 .add_enabled(

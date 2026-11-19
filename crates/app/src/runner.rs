@@ -1,15 +1,11 @@
-use crate::{
-    ACCENT, BORDER, ERROR, GROUND, MUTED, OK, PANEL, SURFACE, TEXT, TEXT_DIM,
-};
+use crate::{ACCENT, BORDER, ERROR, GROUND, MUTED, OK, TEXT, TEXT_DIM};
 use cloud9_core::Document;
 use cloud9_mc::{
     Account, ClientRuntime, Installer, Instance, Level, LogEvent, MicrosoftSignIn, Profile,
     bootstrap_client_registry, create_instance, create_instance_with_helper, download_pinned_mods,
     has_mod_downloads, resolve_mods,
 };
-use eframe::egui::{
-    self, CollapsingHeader, Frame, RichText, Stroke, vec2,
-};
+use eframe::egui::{self, CollapsingHeader, Frame, RichText, Stroke};
 use std::{
     collections::VecDeque,
     fs::OpenOptions,
@@ -478,7 +474,8 @@ impl Runner {
             for jar in &episode.mods {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(&jar.display_name.value).small());
-                    if let Some(source) = jar.file_hint.as_ref().and_then(|hint| hint.url.as_ref()) {
+                    if let Some(source) = jar.file_hint.as_ref().and_then(|hint| hint.url.as_ref())
+                    {
                         ui.hyperlink_to("Source", source);
                     }
                 });
@@ -586,11 +583,21 @@ impl Runner {
                         ui.add_space(4.0);
                     }
                     ui.add_enabled_ui(self.saved.is_none(), |ui| {
-                        Self::form_row(ui, "Local mod directory", &mut self.supplied, None,
-                            matches!(self.action_focus, Some("Locate jar" | "Fetch")));
+                        Self::form_row(
+                            ui,
+                            "Local mod directory",
+                            &mut self.supplied,
+                            None,
+                            matches!(self.action_focus, Some("Locate jar" | "Fetch")),
+                        );
                         ui.add_space(4.0);
-                        Self::form_row(ui, "Java executable", &mut self.java, Some("Auto-detect"),
-                            self.action_focus == Some("Locate Java"));
+                        Self::form_row(
+                            ui,
+                            "Java executable",
+                            &mut self.java,
+                            Some("Auto-detect"),
+                            self.action_focus == Some("Locate Java"),
+                        );
                         ui.add_space(4.0);
                         Self::form_row(ui, "Runner helper JAR", &mut self.helper, None, false);
                         ui.add_space(4.0);
@@ -613,7 +620,8 @@ impl Runner {
             ui.add_space(10.0);
 
             // Primary action buttons.
-            let can_launch = !self.pending && self.process.is_none() && (self.dev || self.account.is_some());
+            let can_launch =
+                !self.pending && self.process.is_none() && (self.dev || self.account.is_some());
             ui.horizontal(|ui| {
                 if ui
                     .add_enabled(
@@ -640,10 +648,7 @@ impl Runner {
                     .as_ref()
                     .is_some_and(|path| path.join("round-snapshot").is_dir())
                     && ui
-                        .add_enabled(
-                            can_launch,
-                            egui::Button::new("Start fresh round"),
-                        )
+                        .add_enabled(can_launch, egui::Button::new("Start fresh round"))
                         .clicked()
                 {
                     self.launch(true);
@@ -651,7 +656,8 @@ impl Runner {
             });
 
             // Error recovery actions.
-            if self.error && self.status.starts_with("Locate jar")
+            if self.error
+                && self.status.starts_with("Locate jar")
                 && ui.button("Locate jar").clicked()
             {
                 self.action_focus = Some("Locate jar");
@@ -717,7 +723,7 @@ impl Runner {
                 .find_map(|event| event.diagnostic)
                 .filter(|diagnostic| Some(diagnostic.message) != self.ignored_message.as_deref());
             if let Some(diagnostic) = diagnostic {
-                let message = diagnostic.message.clone();
+                let message = diagnostic.message;
                 ui.colored_label(ACCENT, message);
                 ui.horizontal_wrapped(|ui| {
                     for action in diagnostic.actions {

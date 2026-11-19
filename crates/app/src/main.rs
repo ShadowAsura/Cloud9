@@ -4,8 +4,8 @@ mod servers;
 
 use cloud9_core::catalog::{Catalog, EpisodeCard, Filters};
 use eframe::egui::{
-    self, Color32, ColorImage, CornerRadius, FontData, FontFamily, FontId, Frame, RichText,
-    Stroke, TextStyle, TextureHandle, TextureOptions, pos2, vec2,
+    self, Color32, ColorImage, CornerRadius, FontData, FontFamily, FontId, Frame, RichText, Stroke,
+    TextStyle, TextureHandle, TextureOptions, pos2, vec2,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -17,7 +17,7 @@ use std::{
 // Design tokens — one place to tune the look and feel.
 // Made pub(crate) so the other UI modules can share the same palette.
 // Dark launcher theme in the spirit of CurseForge Classic: near-black slate,
- // lifted panels, light text, single orange accent.
+// lifted panels, light text, single orange accent.
 pub(crate) const GROUND: Color32 = Color32::from_rgb(20, 22, 26);
 pub(crate) const PANEL: Color32 = Color32::from_rgb(29, 32, 38);
 pub(crate) const SURFACE: Color32 = Color32::from_rgb(38, 43, 51);
@@ -167,7 +167,8 @@ impl Thumbnails {
             if self.images.len() >= 128 {
                 self.images.clear();
             }
-            let texture = result.map(|image| ctx.load_texture(&path, image, TextureOptions::LINEAR));
+            let texture =
+                result.map(|image| ctx.load_texture(&path, image, TextureOptions::LINEAR));
             self.images.insert(path, texture);
         }
     }
@@ -210,7 +211,12 @@ impl Thumbnails {
         }
         if let Some(seconds) = card.duration {
             let text = if seconds >= 3600 {
-                format!("{}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
+                format!(
+                    "{}:{:02}:{:02}",
+                    seconds / 3600,
+                    seconds / 60 % 60,
+                    seconds % 60
+                )
             } else {
                 format!("{}:{:02}", seconds / 60, seconds % 60)
             };
@@ -336,10 +342,10 @@ impl Browser {
             }
         }
         if std::env::var("CLOUD9_DIALOG").is_ok() {
-            if std::env::var("CLOUD9_SELECT_FIRST").is_ok() {
-                if let Some(id) = browser.cards.first().map(|card| card.video_id.clone()) {
-                    browser.select_episode(&id);
-                }
+            if std::env::var("CLOUD9_SELECT_FIRST").is_ok()
+                && let Some(id) = browser.cards.first().map(|card| card.video_id.clone())
+            {
+                browser.select_episode(&id);
             }
             browser.play_dialog = true;
             browser.dialog_alpha = 1.0;
@@ -423,8 +429,8 @@ impl eframe::App for Browser {
 
         // Animate the dialog open/close alpha.
         let dialog_target = if self.play_dialog { 1.0 } else { 0.0 };
-        self.dialog_alpha = (self.dialog_alpha + (dialog_target - self.dialog_alpha) * 0.18)
-            .clamp(0.0, 1.0);
+        self.dialog_alpha =
+            (self.dialog_alpha + (dialog_target - self.dialog_alpha) * 0.18).clamp(0.0, 1.0);
         if self.dialog_alpha > 0.0 && self.dialog_alpha < 1.0 {
             ctx.request_repaint();
         }
@@ -437,7 +443,11 @@ impl eframe::App for Browser {
         egui::SidePanel::left("nav")
             .exact_width(208.0)
             .resizable(false)
-            .frame(Frame::new().fill(PANEL).inner_margin(egui::Margin::same(16)))
+            .frame(
+                Frame::new()
+                    .fill(PANEL)
+                    .inner_margin(egui::Margin::same(16)),
+            )
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.label(
@@ -466,8 +476,8 @@ impl eframe::App for Browser {
                         .add_sized(
                             [ui.available_width(), 32.0],
                             egui::Button::new(RichText::new("Reload index").small()),
-                    )
-                    .clicked()
+                        )
+                        .clicked()
                     {
                         self.open();
                     }
@@ -698,8 +708,7 @@ fn gallery_layout(available: f32) -> (usize, f32, f32) {
     let gap = 16.0;
     let width = (available - 64.0).max(200.0);
     let columns = gallery_columns(width, gap);
-    let card_width =
-        ((width - gap * (columns - 1) as f32) / columns as f32).min(CARD_MAX_WIDTH);
+    let card_width = ((width - gap * (columns - 1) as f32) / columns as f32).min(CARD_MAX_WIDTH);
     let row_height = card_width * 9.0 / 16.0 + CARD_CONTENT_HEIGHT;
     (columns, card_width, row_height)
 }
@@ -720,92 +729,92 @@ fn render_card(
                 ui.spacing_mut().item_spacing.y = 8.0;
 
                 // Thumbnail band — full width of card.
-            let opened = thumbnails.draw(ui, card, width).clicked();
+                let opened = thumbnails.draw(ui, card, width).clicked();
 
-            ui.add_space(8.0);
+                ui.add_space(8.0);
 
-            // Content — stacked vertically below the thumbnail.
-            ui.vertical(|ui| {
-                ui.set_width(width - 24.0);
-                ui.spacing_mut().item_spacing.y = 6.0;
+                // Content — stacked vertically below the thumbnail.
+                ui.vertical(|ui| {
+                    ui.set_width(width - 24.0);
+                    ui.spacing_mut().item_spacing.y = 6.0;
 
-                // Mode chip + version, aligned to the right.
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(mode_label(&card.mode))
-                            .color(ACCENT)
-                            .small()
-                            .strong(),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Mode chip + version, aligned to the right.
+                    ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new(&card.version)
-                                .monospace()
-                                .color(TEXT_DIM)
-                                .small(),
+                            RichText::new(mode_label(&card.mode))
+                                .color(ACCENT)
+                                .small()
+                                .strong(),
                         );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(&card.version)
+                                    .monospace()
+                                    .color(TEXT_DIM)
+                                    .small(),
+                            );
+                        });
                     });
-                });
 
-                ui.add_space(4.0);
+                    ui.add_space(4.0);
 
-                // Title, up to two lines.
-                let mut title = egui::text::LayoutJob::simple(
-                    card.title.clone(),
-                    FontId::proportional(17.0),
-                    TEXT,
-                    width - 24.0,
-                );
-                title.wrap.max_rows = 2;
-                ui.allocate_ui_with_layout(
-                    vec2(width - 24.0_f32, 44.0_f32),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        ui.label(title).on_hover_text(&card.title);
-                    },
-                );
+                    // Title, up to two lines.
+                    let mut title = egui::text::LayoutJob::simple(
+                        card.title.clone(),
+                        FontId::proportional(17.0),
+                        TEXT,
+                        width - 24.0,
+                    );
+                    title.wrap.max_rows = 2;
+                    ui.allocate_ui_with_layout(
+                        vec2(width - 24.0_f32, 44.0_f32),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.label(title).on_hover_text(&card.title);
+                        },
+                    );
 
-                ui.add_space(2.0);
+                    ui.add_space(2.0);
 
-                // Status / tags line.
-                let (status, color) = if card.community_setup {
-                    ("Community setup".to_owned(), OK)
-                } else if card.review_count > 0 {
-                    (format!("Needs review ({})", card.review_count), MUTED)
-                } else {
-                    ("Indexed".into(), MUTED)
-                };
-                let tags = if card.tags.is_empty() {
-                    status
-                } else {
-                    format!("{status}  /  {}", card.tags.join(", "))
-                };
-                ui.add(
-                    egui::Label::new(RichText::new(tags).size(12.0).color(color)).truncate(),
-                );
+                    // Status / tags line.
+                    let (status, color) = if card.community_setup {
+                        ("Community setup".to_owned(), OK)
+                    } else if card.review_count > 0 {
+                        (format!("Needs review ({})", card.review_count), MUTED)
+                    } else {
+                        ("Indexed".into(), MUTED)
+                    };
+                    let tags = if card.tags.is_empty() {
+                        status
+                    } else {
+                        format!("{status}  /  {}", card.tags.join(", "))
+                    };
+                    ui.add(
+                        egui::Label::new(RichText::new(tags).size(12.0).color(color)).truncate(),
+                    );
 
-                ui.add_space(10.0);
+                    ui.add_space(10.0);
 
-                // Action row: primary action left, watch link right.
-                let action_clicked = ui
-                    .horizontal(|ui| {
-                        let b = ui
-                            .small_button(if card.community_setup {
-                                "Play"
-                            } else {
-                                "Details"
-                            })
-                            .clicked();
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                ui.hyperlink_to("Watch episode", &card.url);
-                            },
-                        );
-                        b
-                    })
-                    .inner;
-                opened || action_clicked
+                    // Action row: primary action left, watch link right.
+                    let action_clicked = ui
+                        .horizontal(|ui| {
+                            let b = ui
+                                .small_button(if card.community_setup {
+                                    "Play"
+                                } else {
+                                    "Details"
+                                })
+                                .clicked();
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.hyperlink_to("Watch episode", &card.url);
+                                },
+                            );
+                            b
+                        })
+                        .inner;
+                    opened || action_clicked
                 })
                 .inner
             })
@@ -865,10 +874,12 @@ mod gallery_tests {
 
     /// Gate: the content budget below the thumbnail must cover the stacked
     /// sections (mode row ~20 + title 48 + tags ~20 + action row ~30 +
-    /// spacing and padding).
+    /// spacing and padding), and row height must equal thumbnail plus budget.
     #[test]
     fn gallery_content_budget_covers_stack() {
-        assert!(CARD_CONTENT_HEIGHT >= 160.0);
+        // Measured stack: 20 + 4 + 48 + 2 + 20 + 10 + 30 + ~24 padding.
+        const STACK_ESTIMATE: f32 = 158.0;
+        const { assert!(CARD_CONTENT_HEIGHT >= STACK_ESTIMATE) };
         for available in [600.0_f32, 1094.0, 1920.0] {
             let (_, card_width, row_height) = gallery_layout(available);
             let thumb = card_width * 9.0 / 16.0;
