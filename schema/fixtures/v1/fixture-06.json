@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "episode": {
+    "video_id": "fixture-06",
+    "title": "Emerald at Quartz Islands",
+    "url": "https://example.invalid/watch?v=fixture-06",
+    "upload_date": null,
+    "duration": null,
+    "thumbnail_path": null,
+    "thumbnail_url": null
+  },
+  "mode": {
+    "value": "lucky_block_bedwars",
+    "confidence": 1,
+    "source": "manual",
+    "status": "confirmed"
+  },
+  "game": {
+    "mc_version": {
+      "value": "1.8.9",
+      "confidence": 0.35,
+      "source": "manual",
+      "status": "needs_review",
+      "defaulted": true
+    },
+    "loader": {
+      "type": {
+        "value": "forge",
+        "confidence": 0.35,
+        "source": "manual",
+        "status": "needs_review",
+        "defaulted": true
+      },
+      "version": {
+        "value": "11.15.1.2318",
+        "confidence": 0.35,
+        "source": "manual",
+        "status": "needs_review",
+        "defaulted": true
+      }
+    },
+    "java_major": {
+      "value": 8,
+      "confidence": 0.35,
+      "source": "manual",
+      "status": "needs_review",
+      "defaulted": true
+    }
+  },
+  "mods": [
+    {
+      "id": "emerald",
+      "role": "lucky",
+      "mod_id": {
+        "value": null,
+        "confidence": 0.3,
+        "source": "manual",
+        "status": "needs_review"
+      },
+      "display_name": {
+        "value": "Emerald Lucky Block",
+        "confidence": 1,
+        "source": "manual",
+        "status": "confirmed"
+      },
+      "version_range": {
+        "value": null,
+        "confidence": 1,
+        "source": "manual",
+        "status": "confirmed"
+      },
+      "aliases": [
+        "Emerald"
+      ],
+      "optional": false,
+      "client_only": false
+    }
+  ],
+  "map": {
+    "template_id": "lucky_block_bedwars",
+    "overrides": {}
+  },
+  "villagers": [
+    {
+      "id": "merchant",
+      "role": "trader",
+      "position": [
+        3,
+        65,
+        4
+      ],
+      "trades": [
+        {
+          "id": "sword",
+          "buy": [
+            {
+              "id": "gold",
+              "item": {
+                "id": "minecraft:gold_ingot",
+                "raw_text": "gold ingot"
+              },
+              "count": 4
+            }
+          ],
+          "sell": {
+            "id": "prize",
+            "item": {
+              "id": null,
+              "raw_text": "a starry sword"
+            },
+            "count": 1
+          },
+          "max_uses": 8,
+          "unrecognized_note": "retain me"
+        }
+      ]
+    }
+  ],
+  "center": {
+    "kind": "island",
+    "blocks": [],
+    "chests": [
+      {
+        "id": "supply",
+        "pos": [
+          0,
+          65,
+          0
+        ],
+        "slots": [
+          {
+            "id": "loot",
+            "slot": 4,
+            "item": {
+              "id": "minecraft:gold_ingot",
+              "raw_text": "gold ingot"
+            },
+            "count": 8
+          }
+        ]
+      }
+    ],
+    "generators": []
+  },
+  "findings": [
+    {
+      "id": "supply-note",
+      "value": "Exact supply chest contents",
+      "confidence": 0.2,
+      "source": "visual",
+      "status": "needs_review",
+      "timestamp_seconds": 94
+    },
+    {
+      "id": "trade-note",
+      "value": "starry sword",
+      "confidence": 0.55,
+      "source": "caption@02:03",
+      "status": "needs_review",
+      "source_span": "he has a starry sword",
+      "alternatives": [
+        {
+          "value": "iron sword",
+          "confidence": 0.4,
+          "source": "description"
+        }
+      ]
+    }
+  ],
+  "future_extension": {
+    "retain": {
+      "anything": [
+        1,
+        2,
+        3
+      ]
+    }
+  }
+}
