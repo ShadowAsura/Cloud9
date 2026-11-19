@@ -325,6 +325,25 @@ impl Browser {
             thumbs: Thumbnails::new(ctx),
         };
         browser.open();
+        // Screenshot/verification hooks (dev only): active solely when the
+        // named env vars are set, so normal runs are unaffected.
+        if let Ok(screen) = std::env::var("CLOUD9_SCREEN") {
+            match screen.to_lowercase().as_str() {
+                "instances" => browser.screen = Screen::Instances,
+                "running" => browser.screen = Screen::Running,
+                "servers" => browser.screen = Screen::Servers,
+                _ => {}
+            }
+        }
+        if std::env::var("CLOUD9_DIALOG").is_ok() {
+            if std::env::var("CLOUD9_SELECT_FIRST").is_ok() {
+                if let Some(id) = browser.cards.first().map(|card| card.video_id.clone()) {
+                    browser.select_episode(&id);
+                }
+            }
+            browser.play_dialog = true;
+            browser.dialog_alpha = 1.0;
+        }
         browser
     }
 
@@ -582,11 +601,8 @@ impl eframe::App for Browser {
                 }
 
                 let gap = 16.0;
-                let width = (ui.available_width() - 64.0).max(200.0);
-                let columns = gallery_columns(width, gap);
-                let card_width =
-                    ((width - gap * (columns - 1) as f32) / columns as f32).min(480.0);
-                let row_height = card_width * 9.0 / 16.0 + 190.0;
+                let (columns, card_width, row_height) =
+                    gallery_layout(ui.available_width());
                 let mut selected = None;
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
@@ -667,6 +683,25 @@ fn nav_item(ui: &mut egui::Ui, selected: bool, label: &str) -> bool {
 
 fn gallery_columns(width: f32, gap: f32) -> usize {
     (((width + gap) / (260.0 + gap)).floor() as usize).clamp(1, 2)
+}
+
+/// Vertical budget below the thumbnail inside a card: mode row, title,
+/// tags and the action row must fit in this many logical pixels.
+pub(crate) const CARD_CONTENT_HEIGHT: f32 = 190.0;
+/// Maximum card width so ultrawide windows keep readable cards.
+pub(crate) const CARD_MAX_WIDTH: f32 = 480.0;
+
+/// Gallery grid geometry shared by the layout and the gate tests.
+/// Invariant: columns * card_width + gap * (columns - 1) <= width, so a
+/// row can never overflow horizontally.
+fn gallery_layout(available: f32) -> (usize, f32, f32) {
+    let gap = 16.0;
+    let width = (available - 64.0).max(200.0);
+    let columns = gallery_columns(width, gap);
+    let card_width =
+        ((width - gap * (columns - 1) as f32) / columns as f32).min(CARD_MAX_WIDTH);
+    let row_height = card_width * 9.0 / 16.0 + CARD_CONTENT_HEIGHT;
+    (columns, card_width, row_height)
 }
 
 fn render_card(
@@ -796,5 +831,51 @@ mod gallery_tests {
         let uv = thumbnail_uv(4.0 / 3.0, 16.0 / 9.0);
         assert_eq!(uv.width(), 1.0);
         assert!((uv.height() - 0.75).abs() < 0.01);
+    }
+
+    /// Gate: a gallery row must never overflow its available width, at any
+    /// window size from small laptops to ultrawide.
+    #[test]
+    fn gallery_row_never_overflows() {
+        for available in [600.0_f32, 800.0, 1000.0, 1094.0, 1280.0, 1600.0, 1920.0] {
+            let gap = 16.0;
+            let width = (available - 64.0).max(200.0);
+            let (columns, card_width, _) = gallery_layout(available);
+            assert!((1..=2).contains(&columns), "columns for {available}");
+            assert!(card_width >= 150.0, "card too narrow for {available}");
+            let row = columns as f32 * card_width + gap * (columns - 1) as f32;
+            assert!(
+                row <= width + 0.01,
+                "row {row} overflows width {width} for {available}"
+            );
+        }
+    }
+
+    /// Gate: cards stay readable on ultrawide windows instead of stretching.
+    #[test]
+    fn gallery_card_width_capped() {
+        for available in [1280.0_f32, 1600.0, 1920.0, 2560.0] {
+            let (_, card_width, _) = gallery_layout(available);
+            assert!(
+                card_width <= CARD_MAX_WIDTH + 0.01,
+                "card {card_width} exceeds cap for {available}"
+            );
+        }
+    }
+
+    /// Gate: the content budget below the thumbnail must cover the stacked
+    /// sections (mode row ~20 + title 48 + tags ~20 + action row ~30 +
+    /// spacing and padding).
+    #[test]
+    fn gallery_content_budget_covers_stack() {
+        assert!(CARD_CONTENT_HEIGHT >= 160.0);
+        for available in [600.0_f32, 1094.0, 1920.0] {
+            let (_, card_width, row_height) = gallery_layout(available);
+            let thumb = card_width * 9.0 / 16.0;
+            assert!(
+                (row_height - thumb - CARD_CONTENT_HEIGHT).abs() < 0.01,
+                "row height must equal thumbnail plus content budget"
+            );
+        }
     }
 }
