@@ -713,19 +713,20 @@ impl Runner {
                 .find_map(|event| event.diagnostic)
                 .filter(|diagnostic| Some(diagnostic.message) != self.ignored_message);
             if let Some(diagnostic) = diagnostic {
-                ui.colored_label(ACCENT, diagnostic.message);
+                let message = diagnostic.message.clone();
+                ui.colored_label(ACCENT, &message);
                 ui.horizontal_wrapped(|ui| {
                     for action in diagnostic.actions {
-                        if ui.button(*action).clicked() {
-                            if *action == "Ignore" {
-                                self.ignored_message = Some(diagnostic.message);
+                        if ui.button(action).clicked() {
+                            if action == "Ignore" {
+                                self.ignored_message = Some(message.clone());
                             } else {
                                 self.action_focus = Some(action);
-                                if *action == "Edit alias" {
+                                if action == "Edit alias" {
                                     self.status = "Edit alias: update aliases/<mod_id>/<version>.json, then retry.".into();
                                     self.error = true;
                                 }
-                                if *action == "Fetch" {
+                                if action == "Fetch" {
                                     self.status = "Use the mod source links and place the matching jars in the local mod directory.".into();
                                     self.error = false;
                                 }
