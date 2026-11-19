@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from scraper.__main__ import review_url
 from scraper.collect import YouTube, parse_vtt, recorded
-from scraper.extract import duplicate_title, extract, mod_matches
+from scraper.extract import duplicate_title, extract, extract_index, mod_matches
 from scraper.storage import Catalog, MANIFEST, review_fields
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -84,3 +84,41 @@ class ExtractionTest(unittest.TestCase):
         self.assertTrue(duplicate_title("Spiral Challenge Games!", "Spiral Challenge Games"))
         self.assertFalse(duplicate_title("Spiral Challenge Games vs. Oak", "Spiral Challenge Games vs. Birch"))
         self.assertFalse(duplicate_title("Spiral Challenge Games part 1", "Spiral Challenge Games part 2"))
+
+    def test_public_listing_without_player_metadata(self):
+        entry = {"id": "abcdefghijk", "title": "Lucky Block Challenge Games", "channel": "PopularMMOs",
+                 "duration": 320, "thumbnails": [{"url": "https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg"}]}
+        with tempfile.TemporaryDirectory() as temporary, patch("scraper.collect.subprocess.run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = json.dumps({"entries": [entry]})
+            collector = YouTube(temporary)
+            record, = collector.index(keyword="Challenge Games", uploader="PopularMMOs")
+            collector.index(keyword="Challenge Games", uploader="PopularMMOs")
+            run.assert_called_once()
+            self.assertIn("--flat-playlist", run.call_args.args[0])
+            self.assertNotIn("--write-subs", run.call_args.args[0])
+            document = extract_index(record)
+            MANIFEST.validate(document)
+            self.assertEqual(document["villagers"], [])
+            self.assertEqual(document["mods"][0]["display_name"]["value"], "Lucky Block")
+            self.assertEqual(document["findings"][0]["id"], "community-setup")
+            self.assertTrue(document["episode"]["thumbnail_url"].endswith("hqdefault.jpg"))
+
+    def test_personal_patch_applies_after_community(self):
+        document = extract_index(load("with-captions.json"))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shared, local = root / "community", root / "overrides"
+            shared.mkdir()
+            local.mkdir()
+            patch_name = "recorded-01.json"
+            for directory, kind in ((shared, "community"), (local, "personal")):
+                value = {"schema_version": 1, "patches": [{"path": "/center/kind", "value": kind}]}
+                (directory / patch_name).write_text(json.dumps(value), encoding="utf-8")
+            catalog = Catalog(root / "data")
+            updated = catalog.write(document, local, community_dir=shared)
+            self.assertEqual(updated["center"]["kind"], "personal")
+            bad = {"schema_version": 1, "patches": [{"path": "/episode/title", "value": "Wrong"}]}
+            (shared / patch_name).write_text(json.dumps(bad), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "community patch"):
+                catalog.write(document, local, community_dir=shared)

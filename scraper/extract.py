@@ -228,3 +228,29 @@ def extract(recording, plugin: Extractor | None = None):
         "villagers": [], "center": {"kind": kind, "blocks": [], "chests": [], "generators": []},
         "findings": list(findings.values()), "mob_tags": mobs,
     }
+
+
+def extract_index(recording):
+    """Produce an episode card and leave gameplay setup to reviewed patches."""
+    document = extract(recording)
+    if document is None:
+        return None
+    document["villagers"] = []
+    document["allow_multiple_lucky"] = False
+    document["findings"] = [
+        entry for entry in document["findings"] if entry["id"] == "multiple-lucky"
+    ]
+    match = re.search(r"\blucky[ -]blocks?\b", recording.title, re.I)
+    if not match:
+        match = re.search(r"\blucky[ -]blocks?\b", recording.description, re.I)
+    if match and not any(mod["role"] == "lucky" for mod in document["mods"]):
+        document["mods"].append(dict(
+            id="lucky-block", role="lucky", mod_id=defaulted(None),
+            display_name=select([candidate("Lucky Block", .85, "description", match.group())]),
+            aliases=["Lucky Block", "Lucky Blocks"], optional=False, client_only=False,
+        ))
+    document["findings"].append(dict(
+        id="community-setup", value="Gameplay setup needs community review",
+        confidence=1, source="manual", status="needs_review",
+    ))
+    return document

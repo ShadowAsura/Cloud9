@@ -8,8 +8,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from jsonschema.exceptions import ValidationError
 
 from .collect import YouTube, recorded
-from .extract import duplicate_title, extract
-from .storage import Catalog, review_fields
+from .extract import duplicate_title, extract, extract_index
+from .storage import Catalog, community_patch, review_fields
 
 LOG = logging.getLogger("cloud9")
 
@@ -27,6 +27,12 @@ def review_url(url, entry):
 
 
 def run(args):
+    if args.command == "check-community":
+        files = sorted(args.community.glob("*.json"))
+        for path in files:
+            community_patch(path)
+        LOG.info("checked %d community patch(es)", len(files))
+        return 0
     catalog = Catalog(args.output)
     if args.command == "sync":
         catalog.sync()
@@ -41,24 +47,27 @@ def run(args):
         return 0
     if args.command == "seed":
         for path in sorted(args.directory.glob("*.json")):
-            catalog.write(json.loads(path.read_text(encoding="utf-8")), args.overrides)
+            catalog.write(json.loads(path.read_text(encoding="utf-8")), args.overrides, community_dir=args.community)
         return 0
     if args.command == "recorded":
         recordings = (recorded(json.loads(path.read_text(encoding="utf-8"))) for path in args.files)
     else:
         collector = YouTube(args.cache, interval=args.interval)
-        ids = args.video or collector.discover(channel=args.channel, playlist=args.playlist,
-                                               keyword=args.keyword, limit=args.limit)
-        recordings = (collector.fetch(video_id, thumbnails=args.thumbnails) for video_id in ids)
+        if args.video:
+            recordings = (collector.fetch(video_id, captions=False) for video_id in args.video)
+        else:
+            recordings = collector.index(channel=args.channel, playlist=args.playlist,
+                                         keyword=args.keyword, limit=args.limit, uploader=args.uploader)
     plugin = None
-    if args.extractor:
+    if args.command == "recorded" and args.extractor:
         module, separator, factory = args.extractor.partition(":")
         if not separator:
             raise ValueError("extractor must be module:factory")
         plugin = getattr(import_module(module), factory)()
     titles = catalog.titles()
+    count = 0
     for recording in recordings:
-        document = extract(recording, plugin)
+        document = extract_index(recording) if args.command == "scrape" else extract(recording, plugin)
         if document is None:
             LOG.info("skipping unclassified video %s", recording.video_id)
             continue
@@ -70,8 +79,13 @@ def run(args):
         ):
             LOG.info("skipping probable re-upload %s", recording.video_id)
             continue
-        catalog.write(document, args.overrides)
+        if args.command == "scrape" and args.thumbnails:
+            collector.cache_thumbnail(recording)
+            document["episode"]["thumbnail_path"] = recording.thumbnail_path
+        catalog.write(document, args.overrides, community_dir=args.community)
         titles[recording.video_id] = recording.title
+        count += 1
+    LOG.info("indexed %d episode(s)", count)
     return 0
 
 
@@ -79,6 +93,7 @@ def main():
     parser = argparse.ArgumentParser(prog="python -m scraper")
     parser.add_argument("--output", type=Path, default=Path("data"))
     parser.add_argument("--overrides", type=Path, default=Path("overrides"))
+    parser.add_argument("--community", type=Path, default=Path("community"))
     commands = parser.add_subparsers(dest="command", required=True)
     scrape = commands.add_parser("scrape")
     source = scrape.add_mutually_exclusive_group(required=True)
@@ -90,11 +105,12 @@ def main():
     scrape.add_argument("--interval", type=float, default=2)
     scrape.add_argument("--limit", type=int, default=50)
     scrape.add_argument("--thumbnails", action="store_true")
-    scrape.add_argument("--extractor")
+    scrape.add_argument("--uploader", help="Filter discovery results by the exact channel display name")
     offline = commands.add_parser("recorded")
     offline.add_argument("files", type=Path, nargs="+")
     offline.add_argument("--extractor")
     commands.add_parser("sync")
+    commands.add_parser("check-community")
     commands.add_parser("seed").add_argument("directory", type=Path)
     commands.add_parser("review").add_argument("--video-id")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")

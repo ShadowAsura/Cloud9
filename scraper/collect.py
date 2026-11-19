@@ -1,12 +1,16 @@
 from dataclasses import asdict
 from html import unescape
 import json
+import hashlib
+import logging
 from pathlib import Path
 import re
 import subprocess
 import tempfile
 import time
+from urllib.error import URLError
 from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, build_opener
 
 from .extract import Recording, Span
 from .storage import atomic_write, encode
@@ -43,6 +47,32 @@ def parse_vtt(text):
 def recorded(data):
     return Recording(**{**data, "chapters": [Span(**span) for span in data.get("chapters", [])],
                         "captions": [Span(**span) for span in data.get("captions", [])]})
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, file, code, message, headers, url):
+        return None
+
+
+def thumbnail_url(url, video_id):
+    parsed = urlsplit(url)
+    return (parsed.scheme == "https"
+            and parsed.netloc in {"i.ytimg.com", "i1.ytimg.com", "i2.ytimg.com", "i3.ytimg.com", "i4.ytimg.com"}
+            and re.fullmatch(rf"/vi(?:_webp)?/{re.escape(video_id)}/[A-Za-z0-9_.-]+", parsed.path))
+
+
+def listing_record(entry):
+    video_id = entry["id"]
+    thumbs = [value["url"] for value in entry.get("thumbnails") or []
+              if thumbnail_url(value.get("url") or "", video_id)]
+    duration = entry.get("duration")
+    date = entry.get("upload_date") or ""
+    if re.fullmatch(r"\d{8}", date):
+        date = f"{date[:4]}-{date[4:6]}-{date[6:]}"
+    return Recording(video_id, entry["title"], watch_url(video_id),
+                     description=entry.get("description") or "", upload_date=date or None,
+                     duration=int(duration) if duration is not None else None,
+                     thumbnail_url=thumbs[-1] if thumbs else None)
 
 
 class YouTube:
@@ -91,9 +121,7 @@ class YouTube:
     def _fresh(self, path):
         return path.is_file() and time.time() - path.stat().st_mtime < self.ttl
 
-    def discover(self, *, channel=None, playlist=None, keyword=None, limit=50):
-        import hashlib
-
+    def _discovery_target(self, *, channel=None, playlist=None, keyword=None, limit=50):
         if not 1 <= limit <= 500:
             raise ValueError("discovery limit must be between 1 and 500")
         selected = [value for value in (channel, playlist, keyword) if value]
@@ -110,29 +138,76 @@ class YouTube:
                 raise ValueError("expected a YouTube channel or playlist")
             target = (selected[0].rstrip("/") if playlist or parsed.path.rstrip("/").endswith("/videos")
                       else selected[0].rstrip("/") + "/videos")
-        key = hashlib.sha256(f"{limit}\n{target}".encode()).hexdigest()
-        cached = self.cache / "discovery" / (key + ".json")
-        if self._fresh(cached):
-            return json.loads(cached.read_text(encoding="utf-8"))
-        result = self._run(["--flat-playlist", "--playlist-end", str(limit), "--dump-single-json"], target)
-        ids = list(dict.fromkeys(entry["id"] for entry in result.get("entries") or []
-                                 if entry and ID.fullmatch(entry.get("id") or "")))
-        atomic_write(cached, encode(ids))
-        return ids
+        return target
 
-    def fetch(self, video_id, *, thumbnails=False):
+    def index(self, *, channel=None, playlist=None, keyword=None, limit=50, uploader=None):
+        """Collect public listing metadata without opening player pages."""
+        target = self._discovery_target(channel=channel, playlist=playlist, keyword=keyword, limit=limit)
+        key = hashlib.sha256(f"{limit}\n{target}\n{uploader or ''}".encode()).hexdigest()
+        path = self.cache / "episode-index" / f"{key}.json"
+        if self._fresh(path):
+            return [recorded(entry) for entry in json.loads(path.read_text(encoding="utf-8"))]
+        result = self._run(["--flat-playlist", "--playlist-end", str(limit), "--dump-single-json"], target)
+        entries = {}
+        for entry in result.get("entries") or []:
+            if not entry or not ID.fullmatch(entry.get("id") or "") or not entry.get("title"):
+                continue
+            channel_name = entry.get("channel") or entry.get("uploader") or ""
+            if uploader is not None and channel_name.casefold() != uploader.casefold():
+                continue
+            entries[entry["id"]] = listing_record(entry)
+        atomic_write(path, encode([asdict(entry) for entry in entries.values()]))
+        return list(entries.values())
+
+    def discover(self, *, channel=None, playlist=None, keyword=None, limit=50):
+        return [entry.video_id for entry in self.index(channel=channel, playlist=playlist, keyword=keyword, limit=limit)]
+
+    def cache_thumbnail(self, entry):
+        url = entry.thumbnail_url
+        if not url or not thumbnail_url(url, entry.video_id):
+            return
+        for extension in IMAGE_EXTS:
+            cached = self.cache / "thumbnails" / (entry.video_id + extension)
+            if cached.is_file():
+                entry.thumbnail_path = str(cached)
+                return
+        time.sleep(max(0, self.interval - (time.monotonic() - self.last)))
+        try:
+            # The image URL came from yt-dlp's public listing. Redirects are
+            # disabled so only that YouTube thumbnail resource can be read.
+            with build_opener(NoRedirect).open(url, timeout=12) as response:
+                extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}.get(
+                    response.headers.get_content_type()
+                )
+                if extension is None:
+                    return
+                content = response.read(2 * 1024 * 1024 + 1)
+            if len(content) > 2 * 1024 * 1024:
+                return
+            output = self.cache / "thumbnails" / (entry.video_id + extension)
+            atomic_write(output, content)
+            entry.thumbnail_path = str(output)
+            self.prune_thumbnails(keep=output)
+        except (OSError, URLError):
+            logging.getLogger(__name__).info("thumbnail unavailable for %s", entry.video_id)
+        finally:
+            self.last = time.monotonic()
+
+    def fetch(self, video_id, *, thumbnails=False, captions=True):
         target = watch_url(video_id)
-        cache = self.cache / ("with-thumbnails" if thumbnails else "recordings") / f"{video_id}.json"
+        cache_root = ("with-thumbnails" if thumbnails else "recordings") if captions else "metadata"
+        cache = self.cache / cache_root / f"{video_id}.json"
         if self._fresh(cache):
             recording = recorded(json.loads(cache.read_text(encoding="utf-8")))
             if not thumbnails or not recording.thumbnail_path or Path(recording.thumbnail_path).is_file():
                 return recording
         with tempfile.TemporaryDirectory(prefix="cloud9-meta-") as staging:
             arguments = ["--no-playlist", "--no-simulate", "--dump-single-json",
-                         "--write-subs", "--write-auto-subs", "--sub-langs", "en(-.*)?",
-                         "--sub-format", "vtt", "--sleep-subtitles", str(self.interval),
                          "-o", str(Path(staging) / "episode.%(ext)s")]
-            if thumbnails:
+            if captions:
+                arguments.extend(["--write-subs", "--write-auto-subs", "--sub-langs", "en(-.*)?",
+                                  "--sub-format", "vtt", "--sleep-subtitles", str(self.interval)])
+            if thumbnails and captions:
                 arguments.append("--write-thumbnail")
             metadata = self._run(arguments, target)
             candidates = sorted(Path(staging).glob("episode.*.vtt"),

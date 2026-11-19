@@ -14,6 +14,16 @@ PROFILE = json.loads((SCHEMA / "profiles" / "default.json").read_text(encoding="
 MANIFEST = Draft202012Validator(json.loads((SCHEMA / "manifest-v1.schema.json").read_text(encoding="utf-8")))
 OVERRIDES = Draft202012Validator(json.loads((SCHEMA / "overrides-v1.schema.json").read_text(encoding="utf-8")))
 LOG = logging.getLogger(__name__)
+COMMUNITY_FIELDS = {"game", "mods", "map", "villagers", "center", "findings", "allow_multiple_lucky"}
+
+
+def community_patch(path):
+    document = json.loads(path.read_text(encoding="utf-8"))
+    OVERRIDES.validate(document)
+    for patch in document["patches"]:
+        if patch["path"].split("/", 2)[1] not in COMMUNITY_FIELDS:
+            raise ValueError(f"community patch cannot change {patch['path']}")
+    return document
 
 
 def atomic_write(path, contents):
@@ -134,15 +144,19 @@ class Catalog:
                 "SELECT manifest_json FROM episodes ORDER BY upload_date DESC, video_id"
             )]
 
-    def write(self, document, overrides_dir):
+    def write(self, document, overrides_dir, *, community_dir=None):
         MANIFEST.validate(document)
         video_id = document["episode"]["video_id"]
         if video_id.upper() in {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(10)),
                                *(f"LPT{i}" for i in range(10))}:
             raise ValueError("episode ID is reserved on Windows")
-        override_path = Path(overrides_dir) / f"{video_id}.json"
-        if override_path.is_file():
-            document = apply_overrides(document, json.loads(override_path.read_text(encoding="utf-8")))
+        if community_dir is not None:
+            patch = Path(community_dir) / f"{video_id}.json"
+            if patch.is_file():
+                document = apply_overrides(document, community_patch(patch))
+        local = Path(overrides_dir) / f"{video_id}.json"
+        if local.is_file():
+            document = apply_overrides(document, json.loads(local.read_text(encoding="utf-8")))
         MANIFEST.validate(document)
         check_ids(document)
         episode = document["episode"]
