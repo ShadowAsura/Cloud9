@@ -45,7 +45,7 @@ pub struct Runner {
     previous: Option<PathBuf>,
     latest: Option<PathBuf>,
     action_focus: Option<&'static str>,
-    ignored_message: Option<&'static str>,
+    ignored_message: Option<String>,
     matchup: Option<cloud9_server::Matchup>,
     ram: u32,
     pending: bool,
@@ -711,15 +711,15 @@ impl Runner {
                 .iter()
                 .rev()
                 .find_map(|event| event.diagnostic)
-                .filter(|diagnostic| Some(diagnostic.message) != self.ignored_message);
+                .filter(|diagnostic| Some(diagnostic.message) != self.ignored_message.as_deref());
             if let Some(diagnostic) = diagnostic {
                 let message = diagnostic.message.clone();
-                ui.colored_label(ACCENT, &message);
+                ui.colored_label(ACCENT, message);
                 ui.horizontal_wrapped(|ui| {
                     for action in diagnostic.actions {
                         if ui.button(*action).clicked() {
                             if *action == "Ignore" {
-                                self.ignored_message = Some(message.clone());
+                                self.ignored_message = Some(message.to_string());
                             } else {
                                 self.action_focus = Some(*action);
                                 if *action == "Edit alias" {
@@ -745,7 +745,7 @@ impl Runner {
                         .fill(GROUND)
                         .stroke(Stroke::new(1.0_f32, BORDER))
                         .corner_radius(crate::CARD_RADIUS)
-                        .inner_margin(egui::Margin::same(10.0_f32))
+                        .inner_margin(egui::Margin::same(10_i8))
                         .show(ui, |ui| {
                             for event in &self.events {
                                 let (label, color) = match event.level {

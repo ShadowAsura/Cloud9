@@ -29,7 +29,7 @@ pub(crate) const ERROR: Color32 = Color32::from_rgb(230, 110, 90);
 pub(crate) const BORDER: Color32 = Color32::from_rgb(60, 55, 40);
 
 pub(crate) const CARD_RADIUS: f32 = 6.0;
-pub(crate) const PANEL_RADIUS: f32 = 8.0;
+pub(crate) const PANEL_RADIUS: u8 = 8;
 
 fn main() -> eframe::Result {
     let mut args = std::env::args_os().skip(1);
@@ -120,7 +120,7 @@ fn set_theme(ctx: &egui::Context) {
             &mut visual.widgets.active,
             &mut visual.widgets.open,
         ] {
-            widget.corner_radius = CornerRadius::same(4.0_f32);
+            widget.corner_radius = CornerRadius::same(4_u8);
             widget.bg_fill = PANEL;
             widget.weak_bg_fill = PANEL;
             widget.bg_stroke = Stroke::new(1.0_f32, BORDER);
@@ -641,7 +641,7 @@ fn render_card(
         .fill(SURFACE)
         .stroke(Stroke::new(1.0_f32, BORDER))
         .corner_radius(CARD_RADIUS)
-        .inner_margin(egui::Margin::same(0.0_f32))
+        .inner_margin(egui::Margin::same(0_i8))
         .show(ui, |ui| {
             ui.set_width(inner_width);
             ui.spacing_mut().item_spacing.y = 6.0;
@@ -651,7 +651,7 @@ fn render_card(
 
             // Content.
             Frame::new()
-                .inner_margin(egui::Margin::same(12.0_f32))
+                .inner_margin(egui::Margin::same(12_i8))
                 .show(ui, |ui| {
                     ui.set_width(inner_width - 24.0);
                     ui.spacing_mut().item_spacing.y = 6.0;
@@ -733,7 +733,8 @@ fn render_card(
                         })
                         .inner;
                     opened || clicked
-                });
+                })
+                .inner;
         })
         .inner
 }

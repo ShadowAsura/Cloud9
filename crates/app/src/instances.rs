@@ -100,7 +100,7 @@ impl Instances {
                     .fill(SURFACE)
                     .stroke(Stroke::new(1.0_f32, BORDER))
                     .corner_radius(crate::CARD_RADIUS)
-                    .inner_margin(egui::Margin::same(14.0_f32))
+                    .inner_margin(egui::Margin::same(14_i8))
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
                         ui.spacing_mut().item_spacing = vec2(10.0_f32, 8.0_f32);

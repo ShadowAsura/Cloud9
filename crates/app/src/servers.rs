@@ -399,7 +399,7 @@ impl Servers {
                     .fill(GROUND)
                     .stroke(Stroke::new(1.0_f32, BORDER))
                     .corner_radius(crate::CARD_RADIUS)
-                    .inner_margin(egui::Margin::same(10.0_f32))
+                    .inner_margin(egui::Margin::same(10_i8))
                     .show(ui, |ui| {
                         ui.label(RichText::new(&self.logs).monospace().size(12.0));
                     });
