@@ -4,24 +4,31 @@ mod servers;
 
 use cloud9_core::catalog::{Catalog, EpisodeCard, Filters};
 use eframe::egui::{
-    self, Color32, ColorImage, CornerRadius, FontData, FontFamily, FontId, Frame, RichText, Stroke,
-    TextStyle, TextureHandle, TextureOptions, pos2, vec2,
+    self, Color32, ColorImage, CornerRadius, FontData, FontFamily, FontId, Frame, RichText,
+    Stroke, TextStyle, TextureHandle, TextureOptions, pos2, vec2,
 };
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::mpsc::{Receiver, SyncSender, channel, sync_channel},
+    time::Instant,
 };
 
-const GROUND: Color32 = Color32::from_rgb(22, 20, 14);
-const PANEL: Color32 = Color32::from_rgb(29, 26, 17);
-const TEXT: Color32 = Color32::from_rgb(232, 226, 208);
-const MUTED: Color32 = Color32::from_rgb(163, 156, 128);
-const ACCENT: Color32 = Color32::from_rgb(242, 194, 48);
+// Design tokens — one place to tune the look and feel.
+const GROUND: Color32 = Color32::from_rgb(24, 22, 16);
+const PANEL: Color32 = Color32::from_rgb(33, 30, 22);
+const SURFACE: Color32 = Color32::from_rgb(41, 37, 28);
+const TEXT: Color32 = Color32::from_rgb(230, 224, 204);
+const TEXT_DIM: Color32 = Color32::from_rgb(184, 176, 152);
+const MUTED: Color32 = Color32::from_rgb(148, 140, 110);
+const ACCENT: Color32 = Color32::from_rgb(210, 162, 48);
+const ACCENT_FAINT: Color32 = Color32::from_rgb(74, 56, 14);
 const OK: Color32 = Color32::from_rgb(143, 192, 122);
-const ERROR: Color32 = Color32::from_rgb(238, 122, 103);
-const BORDER: Color32 = Color32::from_rgb(46, 42, 27);
-const OUTLINE: Color32 = Color32::from_rgb(58, 53, 34);
+const ERROR: Color32 = Color32::from_rgb(230, 110, 90);
+const BORDER: Color32 = Color32::from_rgb(60, 55, 40);
+
+const CARD_RADIUS: f32 = 6.0;
+const PANEL_RADIUS: f32 = 8.0;
 
 fn main() -> eframe::Result {
     let mut args = std::env::args_os().skip(1);
@@ -32,8 +39,8 @@ fn main() -> eframe::Result {
     let episode = args.next().and_then(|id| id.into_string().ok());
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1100.0, 760.0])
-            .with_min_inner_size([740.0, 500.0]),
+            .with_inner_size([1150.0, 800.0])
+            .with_min_inner_size([800.0, 560.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -76,23 +83,30 @@ fn set_theme(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
     ctx.style_mut(|style| {
         style.spacing.item_spacing = vec2(10.0, 8.0);
-        style.spacing.button_padding = vec2(12.0, 7.0);
+        style.spacing.button_padding = vec2(14.0, 8.0);
+        style.spacing.menu_margin = vec2(10.0, 8.0);
         style
             .text_styles
             .insert(TextStyle::Body, FontId::proportional(15.0));
         style
             .text_styles
             .insert(TextStyle::Button, FontId::proportional(15.0));
+        style
+            .text_styles
+            .insert(TextStyle::Small, FontId::proportional(12.0));
+        style
+            .text_styles
+            .insert(TextStyle::Heading, FontId::proportional(26.0));
         let visual = &mut style.visuals;
         visual.panel_fill = GROUND;
         visual.window_fill = PANEL;
         visual.extreme_bg_color = PANEL;
         visual.override_text_color = Some(TEXT);
         visual.hyperlink_color = ACCENT;
-        visual.window_corner_radius = CornerRadius::same(2);
+        visual.window_corner_radius = CornerRadius::same(PANEL_RADIUS);
         visual.window_shadow = egui::Shadow::NONE;
         visual.popup_shadow = egui::Shadow::NONE;
-        visual.selection.bg_fill = OUTLINE;
+        visual.selection.bg_fill = ACCENT;
         for widget in [
             &mut visual.widgets.noninteractive,
             &mut visual.widgets.inactive,
@@ -100,10 +114,10 @@ fn set_theme(ctx: &egui::Context) {
             &mut visual.widgets.active,
             &mut visual.widgets.open,
         ] {
-            widget.corner_radius = CornerRadius::same(2);
+            widget.corner_radius = CornerRadius::same(4.0);
             widget.bg_fill = PANEL;
             widget.weak_bg_fill = PANEL;
-            widget.bg_stroke = Stroke::new(1.0_f32, OUTLINE);
+            widget.bg_stroke = Stroke::new(1.0_f32, BORDER);
             widget.fg_stroke = Stroke::new(1.0_f32, TEXT);
         }
         visual.widgets.hovered.bg_stroke.color = ACCENT;
@@ -145,18 +159,17 @@ impl Thumbnails {
             if self.images.len() >= 128 {
                 self.images.clear();
             }
-            let texture =
-                result.map(|image| ctx.load_texture(&path, image, TextureOptions::LINEAR));
+            let texture = result.map(|image| ctx.load_texture(&path, image, TextureOptions::LINEAR));
             self.images.insert(path, texture);
         }
     }
 
     fn draw(&mut self, ui: &mut egui::Ui, card: &EpisodeCard, width: f32) -> egui::Response {
-        let (rect, response) =
-            ui.allocate_exact_size(vec2(width, width * 9.0 / 16.0), egui::Sense::click());
+        let height = width * 9.0 / 16.0;
+        let (rect, response) = ui.allocate_exact_size(vec2(width, height), egui::Sense::click());
         let path = card.thumbnail_path.as_deref();
         let painter = ui.painter();
-        painter.rect_filled(rect, 2, GROUND);
+        painter.rect_filled(rect, 2.0, GROUND);
         if let Some(path) = path {
             if let Some(Some(texture)) = self.images.get(path) {
                 painter.image(
@@ -175,9 +188,9 @@ impl Thumbnails {
         }
         if !path.is_some_and(|path| matches!(self.images.get(path), Some(Some(_)))) {
             let label = if path.is_some_and(|path| self.pending.contains(path)) {
-                "Loading thumbnail"
+                format!("Loading thumbnail{}", loading_dots())
             } else {
-                "No thumbnail"
+                "No thumbnail".to_owned()
             };
             painter.text(
                 rect.center(),
@@ -189,12 +202,7 @@ impl Thumbnails {
         }
         if let Some(seconds) = card.duration {
             let text = if seconds >= 3600 {
-                format!(
-                    "{}:{:02}:{:02}",
-                    seconds / 3600,
-                    seconds / 60 % 60,
-                    seconds % 60
-                )
+                format!("{}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
             } else {
                 format!("{}:{:02}", seconds / 60, seconds % 60)
             };
@@ -203,14 +211,14 @@ impl Thumbnails {
                 rect.max - vec2(8.0, 8.0) - galley.size() - vec2(10.0, 6.0),
                 galley.size() + vec2(10.0, 6.0),
             );
-            painter.rect_filled(badge, 2, Color32::from_black_alpha(215));
+            painter.rect_filled(badge, 2.0, Color32::from_black_alpha(215));
             painter.galley(badge.min + vec2(5.0, 3.0), galley, TEXT);
         }
         if response.hovered() {
             painter.rect_stroke(
                 rect,
-                2,
-                Stroke::new(1.0_f32, ACCENT),
+                2.0,
+                Stroke::new(1.5_f32, ACCENT),
                 egui::StrokeKind::Inside,
             );
         }
@@ -218,6 +226,12 @@ impl Thumbnails {
             .on_hover_cursor(egui::CursorIcon::PointingHand)
             .on_hover_text(&card.title)
     }
+}
+
+/// Animated dots for loading states (repaint-driven by the caller).
+fn loading_dots() -> String {
+    let ticks = (Instant::now().elapsed().as_secs_f64() * 2.0) as usize;
+    ".".repeat(ticks % 4)
 }
 
 fn thumbnail_uv(source: f32, destination: f32) -> egui::Rect {
@@ -254,6 +268,7 @@ enum Screen {
 struct Browser {
     screen: Screen,
     play_dialog: bool,
+    dialog_alpha: f32,
     runner: runner::Runner,
     instances: instances::Instances,
     servers: servers::Servers,
@@ -285,6 +300,7 @@ impl Browser {
         let mut browser = Self {
             screen: Screen::Episodes,
             play_dialog: false,
+            dialog_alpha: 0.0,
             runner: runner::Runner::new(),
             instances: instances::Instances::default(),
             servers: servers::Servers::new(),
@@ -350,6 +366,16 @@ impl Browser {
             }
         }
     }
+
+    /// Draws a dimmed backdrop behind an open dialog so the open state feels animated.
+    fn dialog_backdrop(&self, ctx: &egui::Context) {
+        if self.dialog_alpha <= 0.0 {
+            return;
+        }
+        let painter = ctx.layer_painter(eframe::egui::LayerId::background());
+        let alpha = (150.0 * self.dialog_alpha.clamp(0.0, 1.0)) as u8;
+        painter.rect_filled(ctx.screen_rect(), 0.0, Color32::from_black_alpha(alpha));
+    }
 }
 
 impl eframe::App for Browser {
@@ -363,11 +389,22 @@ impl eframe::App for Browser {
             self.play_dialog = false;
         }
         self.servers.poll(ctx);
+
+        // Animate the dialog open/close alpha.
+        let dialog_target = if self.play_dialog { 1.0 } else { 0.0 };
+        self.dialog_alpha = (self.dialog_alpha + (dialog_target - self.dialog_alpha) * 0.18)
+            .clamp(0.0, 1.0);
+        if self.dialog_alpha > 0.0 && self.dialog_alpha < 1.0 {
+            ctx.request_repaint();
+        }
+
+        self.dialog_backdrop(ctx);
+
         egui::TopBottomPanel::top("header")
             .frame(
                 Frame::new()
                     .fill(PANEL)
-                    .inner_margin(egui::Margin::symmetric(24, 14))
+                    .inner_margin(egui::Margin::symmetric(28, 16))
                     .stroke(Stroke::new(1.0_f32, BORDER)),
             )
             .show(ctx, |ui| {
@@ -377,21 +414,42 @@ impl eframe::App for Browser {
                             .monospace()
                             .strong()
                             .color(ACCENT)
-                            .size(19.0),
+                            .size(20.0),
                     );
                     ui.separator();
+                    ui.spacing_mut().item_spacing = vec2(16.0, 0.0);
                     for (screen, label) in [
                         (Screen::Episodes, "Episodes"),
                         (Screen::Instances, "Instances"),
                         (Screen::Running, "Running"),
                         (Screen::Servers, "Servers"),
                     ] {
-                        ui.selectable_value(&mut self.screen, screen, label);
+                        let selected = self.screen == screen;
+                        let button = egui::SelectableLabel::new(
+                            selected,
+                            RichText::new(label).color(if selected { TEXT } else { MUTED }),
+                        );
+                        if ui.add(button).clicked() {
+                            self.screen = screen;
+                        }
                     }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .button(
+                                RichText::new("Reload index")
+                                    .small()
+                                    .color(if self.screen == Screen::Episodes { TEXT } else { MUTED }),
+                            )
+                            .clicked()
+                        {
+                            self.open();
+                        }
+                    });
                 });
             });
+
         egui::CentralPanel::default()
-            .frame(Frame::new().fill(GROUND).inner_margin(24))
+            .frame(Frame::new().fill(GROUND).inner_margin(28))
             .show(ctx, |ui| {
                 match self.screen {
                     Screen::Instances => {
@@ -410,11 +468,22 @@ impl eframe::App for Browser {
                     Screen::Servers => {
                         if let Some(path) = self.servers.view(ui, &self.runner) {
                             let imported = (|| -> Result<_, String> {
-                                let matchup = cloud9_server::Matchup::load(&path).map_err(|error| error.to_string())?;
-                                let document = self.catalog.as_ref()
-                                    .ok_or_else(|| "Open an episode catalog before importing a matchup".to_owned())?
+                                let matchup = cloud9_server::Matchup::load(&path)
+                                    .map_err(|error| error.to_string())?;
+                                let document = self
+                                    .catalog
+                                    .as_ref()
+                                    .ok_or_else(|| {
+                                        "Open an episode catalog before importing a matchup"
+                                            .to_owned()
+                                    })?
                                     .document(&matchup.manifest_id)
-                                    .map_err(|_| format!("Add episode {} to the catalog before importing this matchup", matchup.manifest_id))?;
+                                    .map_err(|_| {
+                                        format!(
+                                            "Add episode {} to the catalog before importing this matchup",
+                                            matchup.manifest_id
+                                        )
+                                    })?;
                                 Ok((matchup.pin(&document).map_err(|error| error.to_string())?, matchup))
                             })();
                             self.runner.import(imported);
@@ -424,26 +493,28 @@ impl eframe::App for Browser {
                     }
                     Screen::Episodes => {}
                 }
+
                 ui.horizontal(|ui| {
-                    ui.heading(RichText::new("Episodes").size(31.0));
+                    ui.heading(RichText::new("Episodes").size(34.0));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("Reload index").clicked() {
                             self.open();
                         }
                     });
                 });
-                ui.add_space(12.0);
+                ui.add_space(14.0);
                 let mut changed = ui
                     .add_sized(
-                        [ui.available_width(), 36.0],
+                        [ui.available_width(), 38.0],
                         egui::TextEdit::singleline(&mut self.filters.search)
                             .hint_text("Search episode titles or IDs"),
                     )
                     .changed();
                 ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = vec2(10.0, 0.0);
                     let previous = self.filters.mode.clone();
                     egui::ComboBox::from_id_salt("mode")
-                        .selected_text(mode_label(&self.filters.mode))
+                        .selected_text(RichText::new(mode_label(&self.filters.mode)).small())
                         .show_ui(ui, |ui| {
                             for mode in ["", "challenge_games", "lucky_block_bedwars"] {
                                 ui.selectable_value(
@@ -457,14 +528,14 @@ impl eframe::App for Browser {
                     changed |= ui
                         .add(
                             egui::TextEdit::singleline(&mut self.filters.tag)
-                                .desired_width(165.0)
+                                .desired_width(170.0)
                                 .hint_text("Addon or mob"),
                         )
                         .changed();
                     changed |= ui
                         .add(
                             egui::TextEdit::singleline(&mut self.filters.version)
-                                .desired_width(110.0)
+                                .desired_width(115.0)
                                 .hint_text("MC version"),
                         )
                         .changed();
@@ -477,7 +548,7 @@ impl eframe::App for Browser {
                     self.page = 0;
                     self.refresh();
                 }
-                ui.add_space(8.0);
+                ui.add_space(10.0);
                 if let Some(error) = &self.error {
                     ui.colored_label(ERROR, error);
                     ui.label("Create the SQLite index with the scraper, then reload.");
@@ -487,63 +558,41 @@ impl eframe::App for Browser {
                     ui.colored_label(MUTED, "No episodes match these filters.");
                     return;
                 }
-                egui::TopBottomPanel::bottom("paging").show_inside(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(self.page > 0, egui::Button::new("Previous"))
-                            .clicked()
-                        {
-                            self.page -= 1;
-                            self.refresh();
-                        }
-                        ui.label(
-                            RichText::new(format!("Page {}", self.page + 1))
-                                .monospace()
-                                .color(MUTED),
-                        );
-                        if ui
-                            .add_enabled(self.next, egui::Button::new("Next"))
-                            .clicked()
-                        {
-                            self.page += 1;
-                            self.refresh();
-                        }
-                    });
-                });
-                let mut scroll = egui::ScrollArea::vertical().auto_shrink([false, false]);
-                if std::mem::take(&mut self.reset_scroll) {
-                    scroll = scroll.vertical_scroll_offset(0.0);
-                }
-                let gap = 14.0;
+
+                let gap = 16.0;
                 let width = ui.available_width() - 12.0;
                 let columns = gallery_columns(width, gap);
                 let card_width = (width - gap * (columns - 1) as f32) / columns as f32;
-                let row_height = card_width * 9.0 / 16.0 + 144.0;
+                let row_height = card_width * 9.0 / 16.0 + 176.0;
                 let mut selected = None;
-                scroll.show_rows(ui, row_height, self.cards.len().div_ceil(columns), |ui, rows| {
-                    for row in rows {
-                        let start = row * columns;
-                        ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = gap;
-                            ui.set_min_height(row_height);
-                            for card in self.cards[start..(start + columns).min(self.cards.len())].iter() {
-                                if render_card(ui, card, &mut self.thumbs, card_width) {
-                                    selected = Some(card.video_id.clone());
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show_rows(ui, row_height, self.cards.len().div_ceil(columns), |ui, rows| {
+                        for row in rows {
+                            let start = row * columns;
+                            ui.horizontal_top(|ui| {
+                                ui.spacing_mut().item_spacing.x = gap;
+                                ui.set_min_height(row_height);
+                                for card in self.cards[start..(start + columns).min(self.cards.len())].iter()
+                                {
+                                    if render_card(ui, card, &mut self.thumbs, card_width) {
+                                        selected = Some(card.video_id.clone());
+                                    }
                                 }
-                            }
-                        });
-                    }
-                });
+                            });
+                        }
+                    });
                 if let Some(id) = selected {
                     self.select_episode(&id);
                 }
             });
+
         if self.play_dialog {
             let dialog = egui::Modal::new(egui::Id::new("play-episode")).show(ctx, |ui| {
                 ui.set_width(492.0_f32.min(ctx.screen_rect().width() - 48.0));
                 let close = ui
                     .horizontal(|ui| {
-                        ui.heading("Episode setup");
+                        ui.heading(RichText::new("Episode setup").size(20.0));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.small_button("Close").clicked()
                         })
@@ -551,12 +600,13 @@ impl eframe::App for Browser {
                     })
                     .inner;
                 egui::ScrollArea::vertical()
-                    .max_height((ctx.screen_rect().height() - 120.0).max(100.0))
+                    .max_height((ctx.screen_rect().height() - 140.0).max(110.0))
                     .show(ui, |ui| self.runner.plan(ui));
                 close
             });
             if dialog.inner || dialog.should_close() {
                 self.play_dialog = false;
+                self.dialog_alpha = 0.0;
             }
         }
     }
@@ -572,7 +622,7 @@ fn mode_label(mode: &str) -> &str {
 }
 
 fn gallery_columns(width: f32, gap: f32) -> usize {
-    (((width + gap) / (248.0 + gap)).floor() as usize).clamp(1, 4)
+    (((width + gap) / (260.0 + gap)).floor() as usize).clamp(1, 4)
 }
 
 fn render_card(
@@ -581,48 +631,65 @@ fn render_card(
     thumbnails: &mut Thumbnails,
     width: f32,
 ) -> bool {
+    let inner_width = width - 2.0;
     Frame::new()
-        .fill(PANEL)
+        .fill(SURFACE)
         .stroke(Stroke::new(1.0_f32, BORDER))
-        .corner_radius(2)
+        .corner_radius(CARD_RADIUS)
+        .inner_margin(egui::Margin::same(0.0))
         .show(ui, |ui| {
-            let width = width - 2.0;
-            ui.set_width(width);
-            ui.spacing_mut().item_spacing.y = 0.0;
-            let opened = thumbnails.draw(ui, card, width).clicked();
+            ui.set_width(inner_width);
+            ui.spacing_mut().item_spacing.y = 6.0;
+
+            // Thumbnail band.
+            let opened = thumbnails.draw(ui, card, inner_width).clicked();
+
+            // Content.
             Frame::new()
-                .inner_margin(egui::Margin::same(10))
+                .inner_margin(egui::Margin::same(12.0))
                 .show(ui, |ui| {
-                    let width = width - 20.0;
-                    ui.set_width(width);
-                    ui.spacing_mut().item_spacing.y = 5.0;
+                    ui.set_width(inner_width - 24.0);
+                    ui.spacing_mut().item_spacing.y = 6.0;
+
+                    // Mode chip + version, aligned to the right.
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new(mode_label(&card.mode))
                                 .color(ACCENT)
-                                .size(11.0),
+                                .small()
+                                .strong(),
                         );
-                        ui.label(
-                            RichText::new(&card.version)
-                                .monospace()
-                                .color(MUTED)
-                                .size(11.0),
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(&card.version)
+                                    .monospace()
+                                    .color(TEXT_DIM)
+                                    .small(),
+                            );
+                        });
                     });
+
+                    ui.add_space(4.0);
+
+                    // Title, up to two lines.
                     let mut title = egui::text::LayoutJob::simple(
                         card.title.clone(),
                         FontId::proportional(17.0),
                         TEXT,
-                        width,
+                        inner_width - 24.0,
                     );
                     title.wrap.max_rows = 2;
                     ui.allocate_ui_with_layout(
-                        vec2(width, 44.0),
+                        vec2(inner_width - 24.0, 48.0),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             ui.label(title).on_hover_text(&card.title);
                         },
                     );
+
+                    ui.add_space(2.0);
+
+                    // Status / tags line.
                     let (status, color) = if card.community_setup {
                         ("Community setup".to_owned(), OK)
                     } else if card.review_count > 0 {
@@ -638,22 +705,24 @@ fn render_card(
                     ui.add(
                         egui::Label::new(RichText::new(tags).size(12.0).color(color)).truncate(),
                     );
-                    let clicked = ui
-                        .horizontal(|ui| {
-                            let clicked = ui
-                                .small_button(if card.community_setup {
-                                    "Play"
-                                } else {
-                                    "Details"
-                                })
-                                .clicked();
+
+                    ui.add_space(10.0);
+
+                    // Action row: primary action left, watch link right.
+                    ui.horizontal(|ui| {
+                        let clicked = ui
+                            .small_button(if card.community_setup {
+                                "Play"
+                            } else {
+                                "Details"
+                            })
+                            .clicked();
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.hyperlink_to("Watch episode", &card.url);
-                            clicked
-                        })
-                        .inner;
-                    opened || clicked
-                })
-                .inner
+                        });
+                        opened || clicked
+                    });
+                });
         })
         .inner
 }
@@ -664,10 +733,10 @@ mod gallery_tests {
 
     #[test]
     fn grid_adapts_to_window_width() {
-        assert_eq!(gallery_columns(245.0, 14.0), 1);
-        assert_eq!(gallery_columns(690.0, 14.0), 2);
-        assert_eq!(gallery_columns(1010.0, 14.0), 3);
-        assert_eq!(gallery_columns(1600.0, 14.0), 4);
+        assert_eq!(gallery_columns(255.0, 16.0), 1);
+        assert_eq!(gallery_columns(736.0, 16.0), 2);
+        assert_eq!(gallery_columns(1000.0, 16.0), 3);
+        assert_eq!(gallery_columns(1600.0, 16.0), 4);
     }
 
     #[test]
