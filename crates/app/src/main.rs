@@ -505,12 +505,7 @@ impl eframe::App for Browser {
                 }
 
                 ui.horizontal(|ui| {
-                    ui.heading(RichText::new("Episodes").size(34.0));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Reload index").clicked() {
-                            self.open();
-                        }
-                    });
+                ui.heading(RichText::new("Episodes").size(34.0));
                 });
                 ui.add_space(14.0);
                 let mut changed = ui
