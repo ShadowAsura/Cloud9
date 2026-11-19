@@ -9,3 +9,17 @@ Run `cargo test -p cloud9-core`. The schemas, initial SQLite migration, and six 
 Evidence records preserve their source, confidence, status, alternatives, and timestamp when applicable. Setup records use stable sibling IDs. Review files contain replacements with a JSON Pointer path, value, and optional expected scrape value. An array segment such as `/mods/@spiral/mod_id` selects a record by its stable ID. A mismatch with `expected` is reported as a conflict and the reviewed value still applies.
 
 The MIT license covers Cloud 9 source and original fixtures. Minecraft, Forge, third-party mod jars, videos, and locally cached thumbnails are obtained separately.
+## M2 · Episode scraper
+
+Create a Python 3.11+ virtual environment and install `scraper/requirements.txt`. Run the offline tests from the repository root.
+
+```sh
+python -m unittest discover -s scraper/tests
+python -m scraper seed schema/fixtures/v1
+python -m scraper recorded scraper/tests/fixtures/with-captions.json
+python -m scraper review --video-id recorded-01
+```
+
+For live indexing, put yt-dlp on PATH and use `python -m scraper scrape --keyword "PopularMMOs Challenge Games" --limit 20`. Channel and playlist URLs and explicit video IDs are also supported. Add `--thumbnails` to keep personal-use thumbnails in the ignored cache. Live scraping uses yt-dlp in metadata-only mode. [yt-dlp options](https://github.com/yt-dlp/yt-dlp#usage-and-options)
+
+Review changes belong in `overrides/VIDEO_ID.json`. The scraper reapplies them on each successful rescrape. Use the review command to get stable paths and timestamped source links.

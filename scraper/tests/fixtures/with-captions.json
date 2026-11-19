@@ -1,0 +1,14 @@
+{
+  "video_id": "recorded-01",
+  "title": "Spiral Lucky Block Challenge Games",
+  "url": "https://example.invalid/watch?v=recorded-01",
+  "description": "Minecraft 1.8.9, Forge 11.15.1.2318. Ore Spawn is featured.",
+  "upload_date": "2016-01-10",
+  "duration": 500,
+  "chapters": [{"seconds": 5, "text": "Spiral Lucky Block v1.2"}],
+  "captions": [
+    {"seconds": 55, "text": "Minecraft 1.7.10"},
+    {"seconds": 60, "text": "The villager trades in the middle."},
+    {"seconds": 65, "text": "Open the chest."}
+  ]
+}
