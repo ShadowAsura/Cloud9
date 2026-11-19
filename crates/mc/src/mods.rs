@@ -230,6 +230,39 @@ pub fn resolve_mods(
     Ok(resolved)
 }
 
+/// Import the locally built Cloud 9 helper into the content-addressed cache.
+pub fn helper_mod(path: &Path, cache: &Path) -> Result<LockedMod, Error> {
+    let bytes = fs::read(path).map_err(|error| {
+        Error::Config(format!(
+            "Build or locate runner-helper at {} ({error})",
+            path.display()
+        ))
+    })?;
+    let mut zip = ZipArchive::new(io::Cursor::new(&bytes))?;
+    let records: Value = serde_json::from_reader(zip.by_name("mcmod.info")?)?;
+    let version = records
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|record| record["modid"] == "runner-helper")
+        .and_then(|record| record["version"].as_str())
+        .ok_or_else(|| {
+            Error::Config("the supplied helper has no runner-helper mod metadata".into())
+        })?;
+    let hash = format!("{:x}", Sha256::digest(&bytes));
+    let target = cache.join(format!("{hash}.jar"));
+    if !target.is_file() || sha256(&target)? != hash {
+        atomically_write(&target, &bytes)?;
+    }
+    Ok(LockedMod {
+        mod_id: "runner-helper".into(),
+        version: version.to_owned(),
+        sha256: hash,
+        source: None,
+        client_only: false,
+    })
+}
+
 pub fn stage_mods(mods: &[LockedMod], cache: &Path, destination: &Path) -> Result<(), Error> {
     fs::create_dir_all(destination)?;
     for record in mods {

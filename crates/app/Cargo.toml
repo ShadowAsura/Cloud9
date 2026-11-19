@@ -10,3 +10,4 @@ eframe = { version = "0.32", default-features = false, features = ["default_font
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 tracing.workspace = true
 cloud9-mc = { path = "../mc" }
+cloud9-world = { path = "../world" }

@@ -66,7 +66,6 @@ pub fn mod_set_hash(profile: &Profile, mods: &[LockedMod]) -> String {
     format!("{:x}", combined.finalize())
 }
 
-/// Prepare in a private sibling directory and publish only a complete, isolated instance.
 pub fn create_instance(
     instances: &Path,
     cache: &Path,
@@ -75,13 +74,54 @@ pub fn create_instance(
     supplied: &Path,
     java: Option<&Path>,
 ) -> Result<Instance, Error> {
+    create_instance_inner(instances, cache, document, profile, supplied, java, None)
+}
+
+pub fn create_instance_with_helper(
+    instances: &Path,
+    cache: &Path,
+    document: &Document,
+    profile: &Profile,
+    supplied: &Path,
+    java: Option<&Path>,
+    helper: &Path,
+) -> Result<Instance, Error> {
+    create_instance_inner(
+        instances,
+        cache,
+        document,
+        profile,
+        supplied,
+        java,
+        Some(helper),
+    )
+}
+
+/// Prepare in a private sibling directory and publish only a complete, isolated instance.
+fn create_instance_inner(
+    instances: &Path,
+    cache: &Path,
+    document: &Document,
+    profile: &Profile,
+    supplied: &Path,
+    java: Option<&Path>,
+    helper: Option<&Path>,
+) -> Result<Instance, Error> {
     profile.check_manifest(document.manifest())?;
     let episode = &document.manifest().episode.video_id;
     if !safe_component(episode) {
         return Err(Error::Config("invalid episode ID for local path".into()));
     }
     let java = discover_java(profile, java)?;
-    let mods = resolve_mods(document.manifest(), supplied, &cache.join("mods"), false)?;
+    let mut mods = resolve_mods(document.manifest(), supplied, &cache.join("mods"), false)?;
+    if let Some(helper) = helper {
+        if mods.iter().any(|entry| entry.mod_id == "runner-helper") {
+            return Err(Error::Config(
+                "runner-helper is supplied by the run configuration".into(),
+            ));
+        }
+        mods.push(crate::helper_mod(helper, &cache.join("mods"))?);
+    }
     fs::create_dir_all(instances)?;
     let root = dunce::canonicalize(instances)?;
     let staging = tempfile::Builder::new()

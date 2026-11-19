@@ -1,0 +1,16 @@
+[package]
+name = "cloud9-world"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+cloud9-core.workspace = true
+cloud9-mc = { path = "../mc" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tempfile.workspace = true
+fastnbt = "2.6"
+flate2 = "1"

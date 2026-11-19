@@ -35,3 +35,11 @@ Choose **Run plan** on an episode card, point it at your local mod directory, an
 For Microsoft sign-in, supply an authorized public-client ID when prompted or set `CLOUD9_MICROSOFT_CLIENT_ID`. Cloud 9 keeps game credentials in memory. Local development mode is an explicit setting for local testing. Minecraft output and diagnostics appear under **Running**. [Microsoft device sign-in](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)
 
 The opt-in runtime smoke test requires a desktop, an internet connection, and `CLOUD9_SMOKE_JAVA` pointing to Java 8. Run `cargo test -p cloud9-mc --test live_client -- --ignored`.
+
+## M5 · Worlds and setup
+
+Build the helper with Java 8 and Gradle 2.14.1 using `gradle -p helper-mod setupCIWorkspace build`. The run plan expects `helper-mod/build/libs/runner-helper-0.1.0.jar` by default. The first run with a new mod set opens a disposable local Forge client to produce the exact registry. The run plan resolves manifest items before preparing the playable save.
+
+The two built-in template saves are generated locally as needed. To use your own template, put its save folder under `templates/` and set the manifest's `map.template_id` to that folder name. Open the prepared Cloud9 save in Singleplayer. The helper fills chests, builds structures, adds villagers and trades, and applies round settings when the save first loads. **Reset round and launch** restores the pre-launch snapshot after Minecraft has exited and keeps a backup of the prior round.
+
+Use `aliases/<mod_id>/<version>.json` to map lowercased raw labels or registry IDs to an object with `id` and optional `meta` and `nbt` fields.

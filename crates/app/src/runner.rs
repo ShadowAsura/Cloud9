@@ -1,7 +1,8 @@
 use crate::{ACCENT, ERROR, GROUND, MUTED, OK, PANEL, TEXT};
 use cloud9_core::Document;
 use cloud9_mc::{
-    Account, ClientRuntime, Installer, Level, LogEvent, MicrosoftSignIn, Profile, create_instance,
+    Account, ClientRuntime, Installer, Instance, Level, LogEvent, MicrosoftSignIn, Profile,
+    bootstrap_client_registry, create_instance_with_helper,
 };
 use eframe::egui::{self, Frame, RichText};
 use std::{
@@ -32,7 +33,10 @@ pub struct Runner {
     java: String,
     client_id: String,
     dev: bool,
-    account: Option<Account>,
+    account: Option<Arc<Account>>,
+    helper: String,
+    template_root: String,
+    previous: Option<PathBuf>,
     ram: u32,
     pending: bool,
     verification: Option<(String, String)>,
@@ -57,6 +61,9 @@ impl Runner {
             client_id: std::env::var("CLOUD9_MICROSOFT_CLIENT_ID").unwrap_or_default(),
             dev: false,
             account: None,
+            helper: "helper-mod/build/libs/runner-helper-0.1.0.jar".into(),
+            template_root: "templates".into(),
+            previous: None,
             ram: 2048,
             pending: false,
             verification: None,
@@ -77,7 +84,7 @@ impl Runner {
             match update {
                 Update::Verification(url, code) => self.verification = Some((url, code)),
                 Update::SignedIn(account) => {
-                    self.account = Some(account);
+                    self.account = Some(Arc::new(account));
                     self.verification = None;
                     self.pending = false;
                     self.status = "Microsoft account connected".into();
@@ -98,6 +105,7 @@ impl Runner {
                         .append(true)
                         .open(path.join("logs/runner.log"))
                         .ok();
+                    self.previous = Some(path);
                     self.process = Some(child);
                     self.log_stream = Some(stream);
                 }
@@ -134,6 +142,7 @@ impl Runner {
     }
 
     pub fn select(&mut self, result: Result<Document, String>) {
+        self.previous = None;
         match result {
             Ok(document) => {
                 self.selected = Some(document);
@@ -172,14 +181,14 @@ impl Runner {
         });
     }
 
-    fn launch(&mut self) {
+    fn launch(&mut self, reset: bool) {
         let Some(document) = self.selected.clone() else {
             return;
         };
         let account = if self.dev {
             Account::local_dev("Cloud9Dev").ok().map(Arc::new)
         } else {
-            self.account.take().map(Arc::new)
+            self.account.clone()
         };
         let Some(account) = account else {
             return;
@@ -191,22 +200,49 @@ impl Runner {
         let supplied = PathBuf::from(&self.supplied);
         let java = (!self.java.is_empty()).then(|| PathBuf::from(&self.java));
         let ram = self.ram;
+        let helper = PathBuf::from(&self.helper);
+        let templates = PathBuf::from(&self.template_root);
+        let previous = reset.then(|| self.previous.clone()).flatten();
         std::thread::spawn(move || {
-            let result = (|| -> Result<_, cloud9_mc::Error> {
+            let result = (|| -> Result<_, Box<dyn std::error::Error>> {
                 let profile = Profile::primary()?;
                 let cache = PathBuf::from(".cache/minecraft");
-                let instance = create_instance(
-                    &PathBuf::from("instances"),
-                    &cache,
-                    &document,
-                    &profile,
-                    &supplied,
-                    java.as_deref(),
-                )?;
+                let instance = if let Some(previous) = previous {
+                    Instance::open(&previous)?
+                } else {
+                    create_instance_with_helper(
+                        &PathBuf::from("instances"),
+                        &cache,
+                        &document,
+                        &profile,
+                        &supplied,
+                        java.as_deref(),
+                        &helper,
+                    )?
+                };
                 let _ = sender.send(Update::Notice(
                     "Verifying and installing the Minecraft runtime".into(),
                 ));
                 let runtime = ClientRuntime::prepare(&Installer::new(&cache)?, &instance)?;
+                let _ = sender.send(Update::Notice("Checking the item registry".into()));
+                let registry =
+                    bootstrap_client_registry(&runtime, &instance, &cache.join("registries"), ram)?;
+                let round = cloud9_world::EpisodeWorld::open(
+                    &document,
+                    instance.root.join("saves/Cloud9"),
+                    instance.root.join("round-snapshot"),
+                    &templates,
+                    &PathBuf::from("aliases"),
+                    &instance.mods,
+                    &registry,
+                    &instance.mod_set_hash,
+                    "cloud9-round",
+                )?;
+                if reset {
+                    round.reset()?;
+                } else {
+                    round.prepare(&templates.join(&document.manifest().map.template_id))?;
+                }
                 let (logs, receive) = channel();
                 let child = runtime.launch(&instance, &account, ram, None, logs)?;
                 Ok(Update::Launched(child, instance.root, receive))
@@ -252,6 +288,14 @@ impl Runner {
                 ui.label("Java executable");
                 ui.add(egui::TextEdit::singleline(&mut self.java).hint_text("Auto-detect"));
             });
+            ui.horizontal(|ui| {
+                ui.label("Runner helper JAR");
+                ui.text_edit_singleline(&mut self.helper);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Templates");
+                ui.text_edit_singleline(&mut self.template_root);
+            });
             ui.add(
                 egui::Slider::new(&mut self.ram, 1024..=16384)
                     .step_by(256.0)
@@ -296,7 +340,7 @@ impl Runner {
                 )
                 .clicked()
             {
-                self.launch();
+                self.launch(false);
             }
         } else {
             ui.colored_label(MUTED, "Choose an episode in the browser.");
@@ -304,9 +348,20 @@ impl Runner {
         self.status(ui);
     }
 
-    pub fn running(&self, ui: &mut egui::Ui) {
+    pub fn running(&mut self, ui: &mut egui::Ui) {
         ui.heading(RichText::new("Running").size(31.0));
         self.status(ui);
+        if self.previous.is_some()
+            && self.selected.is_some()
+            && ui
+                .add_enabled(
+                    !self.pending && self.process.is_none() && (self.dev || self.account.is_some()),
+                    egui::Button::new("Reset round and launch"),
+                )
+                .clicked()
+        {
+            self.launch(true);
+        }
         if self.events.is_empty() {
             ui.colored_label(MUTED, "Minecraft output will appear here.");
         }

@@ -7,8 +7,10 @@ mod registry;
 
 pub use artifact::Installer;
 pub use auth::{Account, MicrosoftSignIn};
-pub use client::{ClientRuntime, Instance, create_instance, item_count, mod_set_hash};
-pub use mods::{LockedMod, resolve_mods, stage_mods, verify_mods};
+pub use client::{
+    ClientRuntime, Instance, create_instance, create_instance_with_helper, item_count, mod_set_hash,
+};
+pub use mods::{LockedMod, helper_mod, resolve_mods, stage_mods, verify_mods};
 pub use process::{Diagnostic, Level, LogEvent, capture_logs, diagnose};
 pub use registry::{Alias, Registry, Resolution};
 
@@ -194,3 +196,5 @@ pub(crate) fn safe_component(component: &str) -> bool {
             && (stem.starts_with("COM") || stem.starts_with("LPT"))
             && stem.as_bytes()[3].is_ascii_digit())
 }
+mod bootstrap;
+pub use bootstrap::{await_registry, bootstrap_client_registry, read_registry};
