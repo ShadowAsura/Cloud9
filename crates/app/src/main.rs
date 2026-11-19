@@ -86,10 +86,10 @@ fn set_theme(ctx: &egui::Context) {
         style.spacing.item_spacing = vec2(10.0_f32, 8.0_f32);
         style.spacing.button_padding = vec2(14.0_f32, 8.0_f32);
         style.spacing.menu_margin = egui::Margin {
-            left: 10.0_f32,
-            right: 10.0_f32,
-            top: 8.0_f32,
-            bottom: 8.0_f32,
+            left: 10_i8,
+            right: 10_i8,
+            top: 8_i8,
+            bottom: 8_i8,
         };
         style
             .text_styles
@@ -714,27 +714,22 @@ fn render_card(
                     ui.add_space(10.0);
 
                     // Action row: primary action left, watch link right.
-                    let clicked = ui
-                        .horizontal(|ui| {
-                            let clicked = ui
-                                .small_button(if card.community_setup {
-                                    "Play"
-                                } else {
-                                    "Details"
-                                })
-                                .clicked();
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.hyperlink_to("Watch episode", &card.url);
-                                },
-                            );
-                            clicked
+                    let button_clicked = ui
+                        .small_button(if card.community_setup {
+                            "Play"
+                        } else {
+                            "Details"
                         })
-                        .inner;
-                    opened || clicked
+                        .clicked();
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            ui.hyperlink_to("Watch episode", &card.url);
+                        },
+                    );
+                    opened || button_clicked
                 })
-                .inner;
+                .inner
         })
         .inner
 }
