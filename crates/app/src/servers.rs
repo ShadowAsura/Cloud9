@@ -1,6 +1,6 @@
-use crate::{ACCENT, ERROR, MUTED, OK, runner::Runner};
+use crate::{ACCENT, BORDER, ERROR, GROUND, MUTED, OK, TEXT_DIM, runner::Runner};
 use cloud9_server::{Control, Create, EULA_URL, Matchup, Options, Server, Status};
-use eframe::egui::{self, RichText};
+use eframe::egui::{self, Frame, RichText, Stroke, vec2};
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
@@ -112,38 +112,44 @@ impl Servers {
 
     pub fn view(&mut self, ui: &mut egui::Ui, runner: &Runner) -> Option<PathBuf> {
         let mut import = None;
-        ui.heading(RichText::new("Servers").size(31.0));
-        ui.add_space(6.0);
+        ui.heading(RichText::new("Servers").size(30.0));
+        ui.add_space(12.0);
         if !self.message.is_empty() {
             ui.colored_label(if self.error { ERROR } else { MUTED }, &self.message);
+            ui.add_space(6.0);
         }
-        ui.horizontal(|ui| {
-            ui.label("Matchup file");
-            ui.text_edit_singleline(&mut self.share);
-            if ui.button("Import").clicked() {
-                import = Some(PathBuf::from(&self.share));
-            }
-            if ui
-                .add_enabled(self.current.is_some(), egui::Button::new("Export"))
-                .clicked()
-                && let Some(server) = &self.current
-            {
-                let result = Matchup::from_server(server)
-                    .and_then(|share| share.save(Path::new(&self.share)));
-                self.report(result, "Matchup exported");
-            }
-        });
+
+        // Matchup import row: fixed 34px strip, everything shares one center
+        // line so the field and buttons can never drift apart.
+        ui.allocate_ui_with_layout(
+            vec2(ui.available_width(), 34.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.label(RichText::new("Matchup file").color(TEXT_DIM).small());
+                ui.add_space(4.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.share)
+                        .desired_width(300.0)
+                        .margin(egui::Margin::symmetric(6, 8)),
+                );
+                if ui.button("Import").clicked() {
+                    import = Some(PathBuf::from(&self.share));
+                }
+                if ui
+                    .add_enabled(self.current.is_some(), egui::Button::new("Export"))
+                    .clicked()
+                    && let Some(server) = &self.current
+                {
+                    let result = Matchup::from_server(server)
+                        .and_then(|share| share.save(Path::new(&self.share)));
+                    self.report(result, "Matchup exported");
+                }
+            },
+        );
+        ui.add_space(10.0);
         ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Server folder");
-            ui.text_edit_singleline(&mut self.slug);
-            if ui
-                .add_enabled(self.pending.is_none(), egui::Button::new("Open"))
-                .clicked()
-            {
-                self.open();
-            }
-        });
+        ui.add_space(8.0);
+
         if self.current.is_some() {
             self.controls(ui);
         } else {
@@ -154,25 +160,56 @@ impl Servers {
 
     fn create_form(&mut self, ui: &mut egui::Ui, runner: &Runner) {
         if let Some(document) = &runner.selected {
-            ui.label(&document.manifest().episode.title);
+            ui.label(RichText::new(&document.manifest().episode.title).strong());
         } else {
             ui.colored_label(MUTED, "Choose an episode to create its server.");
         }
+        ui.add_space(8.0);
+
+        // Server folder row: same fixed-height centered strip as above.
+        ui.allocate_ui_with_layout(
+            vec2(ui.available_width(), 34.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.label(RichText::new("Server folder").color(TEXT_DIM).small());
+                ui.add_space(4.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.slug)
+                        .desired_width(280.0)
+                        .margin(egui::Margin::symmetric(6, 8)),
+                );
+                if ui
+                    .add_enabled(self.pending.is_none(), egui::Button::new("Open"))
+                    .clicked()
+                {
+                    self.open();
+                }
+            },
+        );
+        ui.add_space(8.0);
+
+        // Capacity & gameplay.
         ui.horizontal(|ui| {
             ui.add(egui::DragValue::new(&mut self.options.port).prefix("Port "));
+            ui.add_space(10.0);
             ui.add(
                 egui::DragValue::new(&mut self.options.max_players)
                     .range(2..=1000)
                     .prefix("Players "),
             );
+            ui.add_space(10.0);
             ui.add(
                 egui::DragValue::new(&mut self.options.ram_mib)
                     .range(512..=32768)
                     .speed(64)
                     .suffix(" MiB RAM"),
             );
+            ui.add_space(10.0);
             ui.checkbox(&mut self.options.pvp, "PvP");
         });
+        ui.add_space(8.0);
+
+        // Authentication & exposure.
         ui.checkbox(&mut self.options.online_mode, "Authenticate players");
         if !self.options.online_mode {
             ui.colored_label(
@@ -195,23 +232,33 @@ impl Servers {
                 );
             }
         });
-        self.eula(ui);
+        // EULA (shares the same 8px rhythm as the checkboxes above).
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.accept, "I accept the Minecraft server EULA");
+            ui.add_space(6.0);
+            ui.hyperlink_to("Read EULA", EULA_URL);
+        });
+        ui.add_space(10.0);
+
+        // Create button.
         if ui
             .add_enabled(
                 self.pending.is_none() && runner.selected.is_some(),
-                egui::Button::new("Create server"),
+                egui::Button::new(RichText::new("Create server").strong().color(GROUND))
+                    .fill(ACCENT),
             )
             .clicked()
         {
             self.create(runner);
         }
-    }
-
-    fn eula(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut self.accept, "I accept the Minecraft server EULA");
-            ui.hyperlink_to("Read EULA", EULA_URL);
-        });
+        if runner.selected.is_none() {
+            ui.colored_label(
+                MUTED,
+                "Select an episode first: open Episodes, then Play or Details on a card.",
+            );
+        } else if !self.accept {
+            ui.colored_label(MUTED, "Accept the server EULA to enable creation.");
+        }
     }
 
     fn controls(&mut self, ui: &mut egui::Ui) {
@@ -230,88 +277,105 @@ impl Servers {
             .status
             .as_ref()
             .map_or("Created", |status| status.phase.as_str());
+
+        // Status badge.
         ui.colored_label(
             if phase == "Running" { OK } else { MUTED },
             format!("{phase} · {address}"),
         );
+        ui.add_space(4.0);
         if !online_mode {
             ui.colored_label(ACCENT, "Offline mode disables authentication. LAN only.");
         }
         if !accepted {
             self.eula(ui);
         }
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(
-                    !active && self.pending.is_none() && (accepted || self.accept),
-                    egui::Button::new("Start"),
-                )
-                .clicked()
-            {
-                self.start(root.clone());
-            }
-            if ui.add_enabled(active, egui::Button::new("Stop")).clicked() {
-                self.report(
-                    cloud9_server::request(&root, Control::Stop),
-                    "Stopping server",
-                );
-            }
-            if ui
-                .add_enabled(active, egui::Button::new("Restart"))
-                .clicked()
-            {
-                self.report(
-                    cloud9_server::request(&root, Control::Restart),
-                    "Restart requested",
-                );
-            }
-            if ui
-                .add_enabled(active, egui::Button::new("Reset round"))
-                .clicked()
-            {
-                self.report(
-                    cloud9_server::request(&root, Control::Reset),
-                    "Round reset requested",
-                );
-            }
-            if ui.button("Copy join address").clicked() {
-                ui.ctx().copy_text(address.clone());
-            }
-            if ui
-                .add_enabled(self.network.is_none(), egui::Button::new("Test TCP"))
-                .clicked()
-            {
-                let (send, receive) = channel();
-                self.network = Some(receive);
-                std::thread::spawn(move || {
-                    let result = cloud9_server::reachable(&address);
-                    let report = result.map_or_else(
-                        |error| error.to_string(),
-                        |success| {
-                            if success {
-                                format!("TCP reachable at {address}")
-                            } else {
-                                format!("TCP check could not reach {address}")
-                            }
-                        },
+        ui.add_space(8.0);
+
+        // Primary controls — grouped so they don't overflow.
+        ui.group(|ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(
+                        !active && self.pending.is_none() && (accepted || self.accept),
+                        egui::Button::new("Start"),
+                    )
+                    .clicked()
+                {
+                    self.start(root.clone());
+                }
+                if ui.add_enabled(active, egui::Button::new("Stop")).clicked() {
+                    self.report(
+                        cloud9_server::request(&root, Control::Stop),
+                        "Stopping server",
                     );
-                    let _ = send.send(report);
-                });
-                self.message = "Testing TCP reachability".into();
-            }
-            if ui
-                .add_enabled(
-                    !active && self.pending.is_none(),
-                    egui::Button::new("Close"),
-                )
-                .clicked()
-            {
-                self.current = None;
-                self.status = None;
-                self.logs.clear();
-                self.message.clear();
-            }
+                }
+                if ui
+                    .add_enabled(active, egui::Button::new("Restart"))
+                    .clicked()
+                {
+                    self.report(
+                        cloud9_server::request(&root, Control::Restart),
+                        "Restart requested",
+                    );
+                }
+                if ui
+                    .add_enabled(active, egui::Button::new("Reset round"))
+                    .clicked()
+                {
+                    self.report(
+                        cloud9_server::request(&root, Control::Reset),
+                        "Round reset requested",
+                    );
+                }
+            });
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Copy join address").clicked() {
+                    ui.ctx().copy_text(address.clone());
+                }
+                ui.add_space(8.0);
+                if ui
+                    .add_enabled(self.network.is_none(), egui::Button::new("Test TCP"))
+                    .clicked()
+                {
+                    let (send, receive) = channel();
+                    self.network = Some(receive);
+                    std::thread::spawn(move || {
+                        let result = cloud9_server::reachable(&address);
+                        let report = result.map_or_else(
+                            |error| error.to_string(),
+                            |success| {
+                                if success {
+                                    format!("TCP reachable at {address}")
+                                } else {
+                                    format!("TCP check could not reach {address}")
+                                }
+                            },
+                        );
+                        let _ = send.send(report);
+                    });
+                    self.message = "Testing TCP reachability".into();
+                }
+                ui.add_space(8.0);
+                if ui
+                    .add_enabled(
+                        !active && self.pending.is_none(),
+                        egui::Button::new("Close"),
+                    )
+                    .clicked()
+                {
+                    self.current = None;
+                    self.status = None;
+                    self.logs.clear();
+                    self.message.clear();
+                }
+            });
         });
+        ui.add_space(8.0);
+
+        // Round & players info.
         if let Some(status) = &self.status {
             let players: Vec<_> = status.players.iter().map(String::as_str).collect();
             ui.colored_label(
@@ -327,6 +391,9 @@ impl Servers {
                 ui.colored_label(ACCENT, message);
             }
         }
+        ui.add_space(10.0);
+
+        // Console command.
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.console).hint_text("Server console command"),
@@ -345,11 +412,30 @@ impl Servers {
                 );
             }
         });
+        ui.add_space(6.0);
+
+        // Logs.
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
+            .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.label(RichText::new(&self.logs).monospace().size(12.0));
+                Frame::new()
+                    .fill(GROUND)
+                    .stroke(Stroke::new(1.0_f32, BORDER))
+                    .corner_radius(crate::CARD_RADIUS)
+                    .inner_margin(egui::Margin::same(10_i8))
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(&self.logs).monospace().size(12.0));
+                    });
             });
+    }
+
+    fn eula(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.accept, "I accept the Minecraft server EULA");
+            ui.add_space(6.0);
+            ui.hyperlink_to("Read EULA", EULA_URL);
+        });
     }
 
     fn report(&mut self, result: Result<(), cloud9_server::Error>, success: &str) {

@@ -11,17 +11,27 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::mpsc::{Receiver, SyncSender, channel, sync_channel},
+    time::Instant,
 };
 
-const GROUND: Color32 = Color32::from_rgb(22, 20, 14);
-const PANEL: Color32 = Color32::from_rgb(29, 26, 17);
-const TEXT: Color32 = Color32::from_rgb(232, 226, 208);
-const MUTED: Color32 = Color32::from_rgb(163, 156, 128);
-const ACCENT: Color32 = Color32::from_rgb(242, 194, 48);
-const OK: Color32 = Color32::from_rgb(143, 192, 122);
-const ERROR: Color32 = Color32::from_rgb(238, 122, 103);
-const BORDER: Color32 = Color32::from_rgb(46, 42, 27);
-const OUTLINE: Color32 = Color32::from_rgb(58, 53, 34);
+// Design tokens — one place to tune the look and feel.
+// Made pub(crate) so the other UI modules can share the same palette.
+// Dark launcher theme in the spirit of CurseForge Classic: near-black slate,
+// lifted panels, light text, single orange accent.
+pub(crate) const GROUND: Color32 = Color32::from_rgb(20, 22, 26);
+pub(crate) const PANEL: Color32 = Color32::from_rgb(29, 32, 38);
+pub(crate) const SURFACE: Color32 = Color32::from_rgb(38, 43, 51);
+pub(crate) const TEXT: Color32 = Color32::from_rgb(237, 239, 242);
+pub(crate) const TEXT_DIM: Color32 = Color32::from_rgb(185, 190, 198);
+pub(crate) const MUTED: Color32 = Color32::from_rgb(125, 133, 144);
+pub(crate) const ACCENT: Color32 = Color32::from_rgb(241, 100, 54);
+pub(crate) const ACCENT_FAINT: Color32 = Color32::from_rgb(66, 32, 22);
+pub(crate) const OK: Color32 = Color32::from_rgb(143, 192, 122);
+pub(crate) const ERROR: Color32 = Color32::from_rgb(230, 110, 90);
+pub(crate) const BORDER: Color32 = Color32::from_rgb(52, 58, 68);
+
+pub(crate) const CARD_RADIUS: f32 = 6.0;
+pub(crate) const PANEL_RADIUS: u8 = 8;
 
 fn main() -> eframe::Result {
     let mut args = std::env::args_os().skip(1);
@@ -32,8 +42,8 @@ fn main() -> eframe::Result {
     let episode = args.next().and_then(|id| id.into_string().ok());
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1100.0, 760.0])
-            .with_min_inner_size([740.0, 500.0]),
+            .with_inner_size([1280.0, 800.0])
+            .with_min_inner_size([1024.0, 600.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -75,24 +85,36 @@ fn set_theme(ctx: &egui::Context) {
     }
     ctx.set_fonts(fonts);
     ctx.style_mut(|style| {
-        style.spacing.item_spacing = vec2(10.0, 8.0);
-        style.spacing.button_padding = vec2(12.0, 7.0);
+        style.spacing.item_spacing = vec2(10.0_f32, 8.0_f32);
+        style.spacing.button_padding = vec2(14.0_f32, 8.0_f32);
+        style.spacing.menu_margin = egui::Margin {
+            left: 10_i8,
+            right: 10_i8,
+            top: 8_i8,
+            bottom: 8_i8,
+        };
         style
             .text_styles
             .insert(TextStyle::Body, FontId::proportional(15.0));
         style
             .text_styles
             .insert(TextStyle::Button, FontId::proportional(15.0));
+        style
+            .text_styles
+            .insert(TextStyle::Small, FontId::proportional(12.0));
+        style
+            .text_styles
+            .insert(TextStyle::Heading, FontId::proportional(26.0));
         let visual = &mut style.visuals;
         visual.panel_fill = GROUND;
         visual.window_fill = PANEL;
         visual.extreme_bg_color = PANEL;
         visual.override_text_color = Some(TEXT);
         visual.hyperlink_color = ACCENT;
-        visual.window_corner_radius = CornerRadius::same(2);
+        visual.window_corner_radius = CornerRadius::same(PANEL_RADIUS);
         visual.window_shadow = egui::Shadow::NONE;
         visual.popup_shadow = egui::Shadow::NONE;
-        visual.selection.bg_fill = OUTLINE;
+        visual.selection.bg_fill = ACCENT;
         for widget in [
             &mut visual.widgets.noninteractive,
             &mut visual.widgets.inactive,
@@ -100,10 +122,10 @@ fn set_theme(ctx: &egui::Context) {
             &mut visual.widgets.active,
             &mut visual.widgets.open,
         ] {
-            widget.corner_radius = CornerRadius::same(2);
+            widget.corner_radius = CornerRadius::same(4_u8);
             widget.bg_fill = PANEL;
             widget.weak_bg_fill = PANEL;
-            widget.bg_stroke = Stroke::new(1.0_f32, OUTLINE);
+            widget.bg_stroke = Stroke::new(1.0_f32, BORDER);
             widget.fg_stroke = Stroke::new(1.0_f32, TEXT);
         }
         visual.widgets.hovered.bg_stroke.color = ACCENT;
@@ -152,11 +174,11 @@ impl Thumbnails {
     }
 
     fn draw(&mut self, ui: &mut egui::Ui, card: &EpisodeCard, width: f32) -> egui::Response {
-        let (rect, response) =
-            ui.allocate_exact_size(vec2(width, width * 9.0 / 16.0), egui::Sense::click());
+        let height = width * 9.0 / 16.0;
+        let (rect, response) = ui.allocate_exact_size(vec2(width, height), egui::Sense::click());
         let path = card.thumbnail_path.as_deref();
         let painter = ui.painter();
-        painter.rect_filled(rect, 2, GROUND);
+        painter.rect_filled(rect, 2.0, GROUND);
         if let Some(path) = path {
             if let Some(Some(texture)) = self.images.get(path) {
                 painter.image(
@@ -175,9 +197,9 @@ impl Thumbnails {
         }
         if !path.is_some_and(|path| matches!(self.images.get(path), Some(Some(_)))) {
             let label = if path.is_some_and(|path| self.pending.contains(path)) {
-                "Loading thumbnail"
+                format!("Loading thumbnail{}", loading_dots())
             } else {
-                "No thumbnail"
+                "No thumbnail".to_owned()
             };
             painter.text(
                 rect.center(),
@@ -200,17 +222,17 @@ impl Thumbnails {
             };
             let galley = painter.layout_no_wrap(text, FontId::monospace(12.0), TEXT);
             let badge = egui::Rect::from_min_size(
-                rect.max - vec2(8.0, 8.0) - galley.size() - vec2(10.0, 6.0),
-                galley.size() + vec2(10.0, 6.0),
+                rect.max - vec2(8.0_f32, 8.0_f32) - galley.size() - vec2(10.0_f32, 6.0_f32),
+                galley.size() + vec2(10.0_f32, 6.0_f32),
             );
-            painter.rect_filled(badge, 2, Color32::from_black_alpha(215));
-            painter.galley(badge.min + vec2(5.0, 3.0), galley, TEXT);
+            painter.rect_filled(badge, 2.0, Color32::from_black_alpha(215));
+            painter.galley(badge.min + vec2(5.0_f32, 3.0_f32), galley, TEXT);
         }
         if response.hovered() {
             painter.rect_stroke(
                 rect,
-                2,
-                Stroke::new(1.0_f32, ACCENT),
+                2.0_f32,
+                Stroke::new(1.5_f32, ACCENT),
                 egui::StrokeKind::Inside,
             );
         }
@@ -218,6 +240,12 @@ impl Thumbnails {
             .on_hover_cursor(egui::CursorIcon::PointingHand)
             .on_hover_text(&card.title)
     }
+}
+
+/// Animated dots for loading states (repaint-driven by the caller).
+fn loading_dots() -> String {
+    let ticks = (Instant::now().elapsed().as_secs_f64() * 2.0) as usize;
+    ".".repeat(ticks % 4)
 }
 
 fn thumbnail_uv(source: f32, destination: f32) -> egui::Rect {
@@ -254,6 +282,7 @@ enum Screen {
 struct Browser {
     screen: Screen,
     play_dialog: bool,
+    dialog_alpha: f32,
     runner: runner::Runner,
     instances: instances::Instances,
     servers: servers::Servers,
@@ -285,6 +314,7 @@ impl Browser {
         let mut browser = Self {
             screen: Screen::Episodes,
             play_dialog: false,
+            dialog_alpha: 0.0,
             runner: runner::Runner::new(),
             instances: instances::Instances::default(),
             servers: servers::Servers::new(),
@@ -301,6 +331,25 @@ impl Browser {
             thumbs: Thumbnails::new(ctx),
         };
         browser.open();
+        // Screenshot/verification hooks (dev only): active solely when the
+        // named env vars are set, so normal runs are unaffected.
+        if let Ok(screen) = std::env::var("CLOUD9_SCREEN") {
+            match screen.to_lowercase().as_str() {
+                "instances" => browser.screen = Screen::Instances,
+                "running" => browser.screen = Screen::Running,
+                "servers" => browser.screen = Screen::Servers,
+                _ => {}
+            }
+        }
+        if std::env::var("CLOUD9_DIALOG").is_ok() {
+            if std::env::var("CLOUD9_SELECT_FIRST").is_ok()
+                && let Some(id) = browser.cards.first().map(|card| card.video_id.clone())
+            {
+                browser.select_episode(&id);
+            }
+            browser.play_dialog = true;
+            browser.dialog_alpha = 1.0;
+        }
         browser
     }
 
@@ -350,6 +399,16 @@ impl Browser {
             }
         }
     }
+
+    /// Draws a dimmed backdrop behind an open dialog so the open state feels animated.
+    fn dialog_backdrop(&self, ctx: &egui::Context) {
+        if self.dialog_alpha <= 0.0 {
+            return;
+        }
+        let painter = ctx.layer_painter(eframe::egui::LayerId::background());
+        let alpha = (150.0 * self.dialog_alpha.clamp(0.0, 1.0)) as u8;
+        painter.rect_filled(ctx.screen_rect(), 0.0, Color32::from_black_alpha(alpha));
+    }
 }
 
 impl eframe::App for Browser {
@@ -358,40 +417,88 @@ impl eframe::App for Browser {
             self.check_catalog(ctx);
         }
         self.thumbs.update(ctx);
+        // Keep repainting while thumbnails load so the loading-dots animation runs.
+        if !self.thumbs.pending.is_empty() {
+            ctx.request_repaint();
+        }
         if self.runner.poll(ctx) {
             self.screen = Screen::Running;
             self.play_dialog = false;
         }
         self.servers.poll(ctx);
-        egui::TopBottomPanel::top("header")
+
+        // Animate the dialog open/close alpha.
+        let dialog_target = if self.play_dialog { 1.0 } else { 0.0 };
+        self.dialog_alpha =
+            (self.dialog_alpha + (dialog_target - self.dialog_alpha) * 0.18).clamp(0.0, 1.0);
+        if self.dialog_alpha > 0.0 && self.dialog_alpha < 1.0 {
+            ctx.request_repaint();
+        }
+
+        self.dialog_backdrop(ctx);
+
+        // Left rail navigation, CurseForge-style: brand on top, screens as
+        // full-width rows with a lighter active shade, index actions pinned
+        // at the bottom.
+        egui::SidePanel::left("nav")
+            .exact_width(208.0)
+            .resizable(false)
             .frame(
                 Frame::new()
                     .fill(PANEL)
-                    .inner_margin(egui::Margin::symmetric(24, 14))
-                    .stroke(Stroke::new(1.0_f32, BORDER)),
+                    .inner_margin(egui::Margin::same(16)),
             )
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
+                ui.vertical(|ui| {
                     ui.label(
                         RichText::new("CLOUD 9")
                             .monospace()
                             .strong()
                             .color(ACCENT)
-                            .size(19.0),
+                            .size(20.0),
                     );
-                    ui.separator();
+                    ui.add_space(16.0);
                     for (screen, label) in [
                         (Screen::Episodes, "Episodes"),
                         (Screen::Instances, "Instances"),
                         (Screen::Running, "Running"),
                         (Screen::Servers, "Servers"),
                     ] {
-                        ui.selectable_value(&mut self.screen, screen, label);
+                        if nav_item(ui, self.screen == screen, label) {
+                            self.screen = screen;
+                        }
+                        ui.add_space(4.0);
+                    }
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(12.0);
+                    if ui
+                        .add_sized(
+                            [ui.available_width(), 32.0],
+                            egui::Button::new(RichText::new("Reload index").small()),
+                        )
+                        .clicked()
+                    {
+                        self.open();
+                    }
+                    ui.add_space(8.0);
+                    match &self.error {
+                        Some(error) => {
+                            ui.colored_label(ERROR, RichText::new(error).small());
+                        }
+                        None => {
+                            let detail = match self.catalog_version {
+                                Some(version) => format!("Index v{version}"),
+                                None => "No index".to_owned(),
+                            };
+                            ui.label(RichText::new(detail).small().color(MUTED));
+                        }
                     }
                 });
             });
+
         egui::CentralPanel::default()
-            .frame(Frame::new().fill(GROUND).inner_margin(24))
+            .frame(Frame::new().fill(GROUND).inner_margin(28))
             .show(ctx, |ui| {
                 match self.screen {
                     Screen::Instances => {
@@ -410,11 +517,22 @@ impl eframe::App for Browser {
                     Screen::Servers => {
                         if let Some(path) = self.servers.view(ui, &self.runner) {
                             let imported = (|| -> Result<_, String> {
-                                let matchup = cloud9_server::Matchup::load(&path).map_err(|error| error.to_string())?;
-                                let document = self.catalog.as_ref()
-                                    .ok_or_else(|| "Open an episode catalog before importing a matchup".to_owned())?
+                                let matchup = cloud9_server::Matchup::load(&path)
+                                    .map_err(|error| error.to_string())?;
+                                let document = self
+                                    .catalog
+                                    .as_ref()
+                                    .ok_or_else(|| {
+                                        "Open an episode catalog before importing a matchup"
+                                            .to_owned()
+                                    })?
                                     .document(&matchup.manifest_id)
-                                    .map_err(|_| format!("Add episode {} to the catalog before importing this matchup", matchup.manifest_id))?;
+                                    .map_err(|_| {
+                                        format!(
+                                            "Add episode {} to the catalog before importing this matchup",
+                                            matchup.manifest_id
+                                        )
+                                    })?;
                                 Ok((matchup.pin(&document).map_err(|error| error.to_string())?, matchup))
                             })();
                             self.runner.import(imported);
@@ -424,26 +542,30 @@ impl eframe::App for Browser {
                     }
                     Screen::Episodes => {}
                 }
+
                 ui.horizontal(|ui| {
-                    ui.heading(RichText::new("Episodes").size(31.0));
+                    ui.heading(RichText::new("Episodes").size(30.0));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Reload index").clicked() {
-                            self.open();
-                        }
+                        ui.label(
+                            RichText::new(format!("{} shown", self.cards.len()))
+                                .small()
+                                .color(MUTED),
+                        );
                     });
                 });
                 ui.add_space(12.0);
                 let mut changed = ui
                     .add_sized(
-                        [ui.available_width(), 36.0],
+                        [ui.available_width(), 38.0],
                         egui::TextEdit::singleline(&mut self.filters.search)
                             .hint_text("Search episode titles or IDs"),
                     )
                     .changed();
                 ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = vec2(10.0_f32, 0.0_f32);
                     let previous = self.filters.mode.clone();
                     egui::ComboBox::from_id_salt("mode")
-                        .selected_text(mode_label(&self.filters.mode))
+                        .selected_text(RichText::new(mode_label(&self.filters.mode)).small())
                         .show_ui(ui, |ui| {
                             for mode in ["", "challenge_games", "lucky_block_bedwars"] {
                                 ui.selectable_value(
@@ -457,14 +579,14 @@ impl eframe::App for Browser {
                     changed |= ui
                         .add(
                             egui::TextEdit::singleline(&mut self.filters.tag)
-                                .desired_width(165.0)
+                                .desired_width(170.0)
                                 .hint_text("Addon or mob"),
                         )
                         .changed();
                     changed |= ui
                         .add(
                             egui::TextEdit::singleline(&mut self.filters.version)
-                                .desired_width(110.0)
+                                .desired_width(115.0)
                                 .hint_text("MC version"),
                         )
                         .changed();
@@ -477,7 +599,7 @@ impl eframe::App for Browser {
                     self.page = 0;
                     self.refresh();
                 }
-                ui.add_space(8.0);
+                ui.add_space(10.0);
                 if let Some(error) = &self.error {
                     ui.colored_label(ERROR, error);
                     ui.label("Create the SQLite index with the scraper, then reload.");
@@ -487,63 +609,39 @@ impl eframe::App for Browser {
                     ui.colored_label(MUTED, "No episodes match these filters.");
                     return;
                 }
-                egui::TopBottomPanel::bottom("paging").show_inside(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(self.page > 0, egui::Button::new("Previous"))
-                            .clicked()
-                        {
-                            self.page -= 1;
-                            self.refresh();
-                        }
-                        ui.label(
-                            RichText::new(format!("Page {}", self.page + 1))
-                                .monospace()
-                                .color(MUTED),
-                        );
-                        if ui
-                            .add_enabled(self.next, egui::Button::new("Next"))
-                            .clicked()
-                        {
-                            self.page += 1;
-                            self.refresh();
+
+                let gap = 16.0;
+                let (columns, card_width, row_height) =
+                    gallery_layout(ui.available_width());
+                let mut selected = None;
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show_rows(ui, row_height, self.cards.len().div_ceil(columns), |ui, rows| {
+                        for row in rows {
+                            let start = row * columns;
+                            ui.horizontal_top(|ui| {
+                                ui.spacing_mut().item_spacing.x = gap;
+                                ui.set_min_height(row_height);
+                                for card in self.cards[start..(start + columns).min(self.cards.len())].iter()
+                                {
+                                    if render_card(ui, card, &mut self.thumbs, card_width) {
+                                        selected = Some(card.video_id.clone());
+                                    }
+                                }
+                            });
                         }
                     });
-                });
-                let mut scroll = egui::ScrollArea::vertical().auto_shrink([false, false]);
-                if std::mem::take(&mut self.reset_scroll) {
-                    scroll = scroll.vertical_scroll_offset(0.0);
-                }
-                let gap = 14.0;
-                let width = ui.available_width() - 12.0;
-                let columns = gallery_columns(width, gap);
-                let card_width = (width - gap * (columns - 1) as f32) / columns as f32;
-                let row_height = card_width * 9.0 / 16.0 + 144.0;
-                let mut selected = None;
-                scroll.show_rows(ui, row_height, self.cards.len().div_ceil(columns), |ui, rows| {
-                    for row in rows {
-                        let start = row * columns;
-                        ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = gap;
-                            ui.set_min_height(row_height);
-                            for card in self.cards[start..(start + columns).min(self.cards.len())].iter() {
-                                if render_card(ui, card, &mut self.thumbs, card_width) {
-                                    selected = Some(card.video_id.clone());
-                                }
-                            }
-                        });
-                    }
-                });
                 if let Some(id) = selected {
                     self.select_episode(&id);
                 }
             });
+
         if self.play_dialog {
             let dialog = egui::Modal::new(egui::Id::new("play-episode")).show(ctx, |ui| {
                 ui.set_width(492.0_f32.min(ctx.screen_rect().width() - 48.0));
                 let close = ui
                     .horizontal(|ui| {
-                        ui.heading("Episode setup");
+                        ui.heading(RichText::new("Episode setup").size(20.0));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.small_button("Close").clicked()
                         })
@@ -551,12 +649,13 @@ impl eframe::App for Browser {
                     })
                     .inner;
                 egui::ScrollArea::vertical()
-                    .max_height((ctx.screen_rect().height() - 120.0).max(100.0))
+                    .max_height((ctx.screen_rect().height() - 140.0).max(110.0))
                     .show(ui, |ui| self.runner.plan(ui));
                 close
             });
             if dialog.inner || dialog.should_close() {
                 self.play_dialog = false;
+                self.dialog_alpha = 0.0;
             }
         }
     }
@@ -571,8 +670,47 @@ fn mode_label(mode: &str) -> &str {
     }
 }
 
+/// Full-width sidebar row with a lighter active shade, CurseForge-style.
+/// Returns true when clicked.
+fn nav_item(ui: &mut egui::Ui, selected: bool, label: &str) -> bool {
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(ui.available_width(), 36.0), egui::Sense::click());
+    if selected {
+        ui.painter().rect_filled(rect, 4.0, ACCENT_FAINT);
+    } else if response.hovered() {
+        ui.painter()
+            .rect_filled(rect, 4.0, Color32::from_white_alpha(8));
+    }
+    ui.painter().text(
+        pos2(rect.min.x + 14.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        FontId::proportional(15.0),
+        if selected { TEXT } else { MUTED },
+    );
+    response.clicked()
+}
+
 fn gallery_columns(width: f32, gap: f32) -> usize {
-    (((width + gap) / (248.0 + gap)).floor() as usize).clamp(1, 4)
+    (((width + gap) / (260.0 + gap)).floor() as usize).clamp(1, 2)
+}
+
+/// Vertical budget below the thumbnail inside a card: mode row, title,
+/// tags and the action row must fit in this many logical pixels.
+pub(crate) const CARD_CONTENT_HEIGHT: f32 = 190.0;
+/// Maximum card width so ultrawide windows keep readable cards.
+pub(crate) const CARD_MAX_WIDTH: f32 = 480.0;
+
+/// Gallery grid geometry shared by the layout and the gate tests.
+/// Invariant: columns * card_width + gap * (columns - 1) <= width, so a
+/// row can never overflow horizontally.
+fn gallery_layout(available: f32) -> (usize, f32, f32) {
+    let gap = 16.0;
+    let width = (available - 64.0).max(200.0);
+    let columns = gallery_columns(width, gap);
+    let card_width = ((width - gap * (columns - 1) as f32) / columns as f32).min(CARD_MAX_WIDTH);
+    let row_height = card_width * 9.0 / 16.0 + CARD_CONTENT_HEIGHT;
+    (columns, card_width, row_height)
 }
 
 fn render_card(
@@ -582,47 +720,63 @@ fn render_card(
     width: f32,
 ) -> bool {
     Frame::new()
-        .fill(PANEL)
+        .fill(SURFACE)
         .stroke(Stroke::new(1.0_f32, BORDER))
-        .corner_radius(2)
+        .corner_radius(CARD_RADIUS)
         .show(ui, |ui| {
-            let width = width - 2.0;
-            ui.set_width(width);
-            ui.spacing_mut().item_spacing.y = 0.0;
-            let opened = thumbnails.draw(ui, card, width).clicked();
-            Frame::new()
-                .inner_margin(egui::Margin::same(10))
-                .show(ui, |ui| {
-                    let width = width - 20.0;
-                    ui.set_width(width);
-                    ui.spacing_mut().item_spacing.y = 5.0;
+            ui.vertical(|ui| {
+                ui.set_width(width);
+                ui.spacing_mut().item_spacing.y = 8.0;
+
+                // Thumbnail band — full width of card.
+                let opened = thumbnails.draw(ui, card, width).clicked();
+
+                ui.add_space(8.0);
+
+                // Content — stacked vertically below the thumbnail.
+                ui.vertical(|ui| {
+                    ui.set_width(width - 24.0);
+                    ui.spacing_mut().item_spacing.y = 6.0;
+
+                    // Mode chip + version, aligned to the right.
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new(mode_label(&card.mode))
-                                .color(ACCENT)
-                                .size(11.0),
+                                .color(TEXT)
+                                .small()
+                                .strong(),
                         );
-                        ui.label(
-                            RichText::new(&card.version)
-                                .monospace()
-                                .color(MUTED)
-                                .size(11.0),
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(&card.version)
+                                    .monospace()
+                                    .color(TEXT_DIM)
+                                    .small(),
+                            );
+                        });
                     });
+
+                    ui.add_space(4.0);
+
+                    // Title, up to two lines.
                     let mut title = egui::text::LayoutJob::simple(
                         card.title.clone(),
                         FontId::proportional(17.0),
                         TEXT,
-                        width,
+                        width - 24.0,
                     );
                     title.wrap.max_rows = 2;
                     ui.allocate_ui_with_layout(
-                        vec2(width, 44.0),
+                        vec2(width - 24.0_f32, 44.0_f32),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             ui.label(title).on_hover_text(&card.title);
                         },
                     );
+
+                    ui.add_space(2.0);
+
+                    // Status / tags line.
                     let (status, color) = if card.community_setup {
                         ("Community setup".to_owned(), OK)
                     } else if card.review_count > 0 {
@@ -638,22 +792,33 @@ fn render_card(
                     ui.add(
                         egui::Label::new(RichText::new(tags).size(12.0).color(color)).truncate(),
                     );
-                    let clicked = ui
+
+                    ui.add_space(10.0);
+
+                    // Action row: primary action left, watch link right.
+                    let action_clicked = ui
                         .horizontal(|ui| {
-                            let clicked = ui
+                            let b = ui
                                 .small_button(if card.community_setup {
                                     "Play"
                                 } else {
                                     "Details"
                                 })
                                 .clicked();
-                            ui.hyperlink_to("Watch episode", &card.url);
-                            clicked
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.hyperlink_to("Watch episode", &card.url);
+                                },
+                            );
+                            b
                         })
                         .inner;
-                    opened || clicked
+                    opened || action_clicked
                 })
                 .inner
+            })
+            .inner
         })
         .inner
 }
@@ -664,10 +829,10 @@ mod gallery_tests {
 
     #[test]
     fn grid_adapts_to_window_width() {
-        assert_eq!(gallery_columns(245.0, 14.0), 1);
-        assert_eq!(gallery_columns(690.0, 14.0), 2);
-        assert_eq!(gallery_columns(1010.0, 14.0), 3);
-        assert_eq!(gallery_columns(1600.0, 14.0), 4);
+        assert_eq!(gallery_columns(255.0, 16.0), 1);
+        assert_eq!(gallery_columns(736.0, 16.0), 2);
+        assert_eq!(gallery_columns(1000.0, 16.0), 2);
+        assert_eq!(gallery_columns(1600.0, 16.0), 2);
     }
 
     #[test]
@@ -675,5 +840,53 @@ mod gallery_tests {
         let uv = thumbnail_uv(4.0 / 3.0, 16.0 / 9.0);
         assert_eq!(uv.width(), 1.0);
         assert!((uv.height() - 0.75).abs() < 0.01);
+    }
+
+    /// Gate: a gallery row must never overflow its available width, at any
+    /// window size from small laptops to ultrawide.
+    #[test]
+    fn gallery_row_never_overflows() {
+        for available in [600.0_f32, 800.0, 1000.0, 1094.0, 1280.0, 1600.0, 1920.0] {
+            let gap = 16.0;
+            let width = (available - 64.0).max(200.0);
+            let (columns, card_width, _) = gallery_layout(available);
+            assert!((1..=2).contains(&columns), "columns for {available}");
+            assert!(card_width >= 150.0, "card too narrow for {available}");
+            let row = columns as f32 * card_width + gap * (columns - 1) as f32;
+            assert!(
+                row <= width + 0.01,
+                "row {row} overflows width {width} for {available}"
+            );
+        }
+    }
+
+    /// Gate: cards stay readable on ultrawide windows instead of stretching.
+    #[test]
+    fn gallery_card_width_capped() {
+        for available in [1280.0_f32, 1600.0, 1920.0, 2560.0] {
+            let (_, card_width, _) = gallery_layout(available);
+            assert!(
+                card_width <= CARD_MAX_WIDTH + 0.01,
+                "card {card_width} exceeds cap for {available}"
+            );
+        }
+    }
+
+    /// Gate: the content budget below the thumbnail must cover the stacked
+    /// sections (mode row ~20 + title 48 + tags ~20 + action row ~30 +
+    /// spacing and padding), and row height must equal thumbnail plus budget.
+    #[test]
+    fn gallery_content_budget_covers_stack() {
+        // Measured stack: 20 + 4 + 48 + 2 + 20 + 10 + 30 + ~24 padding.
+        const STACK_ESTIMATE: f32 = 158.0;
+        const { assert!(CARD_CONTENT_HEIGHT >= STACK_ESTIMATE) };
+        for available in [600.0_f32, 1094.0, 1920.0] {
+            let (_, card_width, row_height) = gallery_layout(available);
+            let thumb = card_width * 9.0 / 16.0;
+            assert!(
+                (row_height - thumb - CARD_CONTENT_HEIGHT).abs() < 0.01,
+                "row height must equal thumbnail plus content budget"
+            );
+        }
     }
 }
