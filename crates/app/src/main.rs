@@ -742,7 +742,7 @@ fn render_card(
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new(mode_label(&card.mode))
-                                .color(ACCENT)
+                                .color(TEXT)
                                 .small()
                                 .strong(),
                         );

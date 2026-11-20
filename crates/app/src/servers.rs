@@ -1,6 +1,6 @@
 use crate::{ACCENT, BORDER, ERROR, GROUND, MUTED, OK, TEXT_DIM, runner::Runner};
 use cloud9_server::{Control, Create, EULA_URL, Matchup, Options, Server, Status};
-use eframe::egui::{self, Frame, RichText, Stroke};
+use eframe::egui::{self, Frame, RichText, Stroke, vec2};
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
@@ -119,24 +119,33 @@ impl Servers {
             ui.add_space(6.0);
         }
 
-        // Matchup import row.
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Matchup file").color(TEXT_DIM).small());
-            ui.add_space(4.0);
-            ui.text_edit_singleline(&mut self.share);
-            if ui.button("Import").clicked() {
-                import = Some(PathBuf::from(&self.share));
-            }
-            if ui
-                .add_enabled(self.current.is_some(), egui::Button::new("Export"))
-                .clicked()
-                && let Some(server) = &self.current
-            {
-                let result = Matchup::from_server(server)
-                    .and_then(|share| share.save(Path::new(&self.share)));
-                self.report(result, "Matchup exported");
-            }
-        });
+        // Matchup import row: fixed 34px strip, everything shares one center
+        // line so the field and buttons can never drift apart.
+        ui.allocate_ui_with_layout(
+            vec2(ui.available_width(), 34.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.label(RichText::new("Matchup file").color(TEXT_DIM).small());
+                ui.add_space(4.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.share)
+                        .desired_width(300.0)
+                        .margin(egui::Margin::symmetric(6, 8)),
+                );
+                if ui.button("Import").clicked() {
+                    import = Some(PathBuf::from(&self.share));
+                }
+                if ui
+                    .add_enabled(self.current.is_some(), egui::Button::new("Export"))
+                    .clicked()
+                    && let Some(server) = &self.current
+                {
+                    let result = Matchup::from_server(server)
+                        .and_then(|share| share.save(Path::new(&self.share)));
+                    self.report(result, "Matchup exported");
+                }
+            },
+        );
         ui.add_space(10.0);
         ui.separator();
         ui.add_space(8.0);
@@ -154,25 +163,29 @@ impl Servers {
             ui.label(RichText::new(&document.manifest().episode.title).strong());
         } else {
             ui.colored_label(MUTED, "Choose an episode to create its server.");
-            ui.colored_label(
-                MUTED,
-                "Open Episodes, then Play or Details on a card to select it.",
-            );
         }
         ui.add_space(8.0);
 
-        // Server folder.
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Server folder").color(TEXT_DIM).small());
-            ui.add_space(4.0);
-            ui.text_edit_singleline(&mut self.slug);
-            if ui
-                .add_enabled(self.pending.is_none(), egui::Button::new("Open"))
-                .clicked()
-            {
-                self.open();
-            }
-        });
+        // Server folder row: same fixed-height centered strip as above.
+        ui.allocate_ui_with_layout(
+            vec2(ui.available_width(), 34.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.label(RichText::new("Server folder").color(TEXT_DIM).small());
+                ui.add_space(4.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.slug)
+                        .desired_width(280.0)
+                        .margin(egui::Margin::symmetric(6, 8)),
+                );
+                if ui
+                    .add_enabled(self.pending.is_none(), egui::Button::new("Open"))
+                    .clicked()
+                {
+                    self.open();
+                }
+            },
+        );
         ui.add_space(8.0);
 
         // Capacity & gameplay.
@@ -219,9 +232,7 @@ impl Servers {
                 );
             }
         });
-        ui.add_space(8.0);
-
-        // EULA.
+        // EULA (shares the same 8px rhythm as the checkboxes above).
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.accept, "I accept the Minecraft server EULA");
             ui.add_space(6.0);

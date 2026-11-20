@@ -73,7 +73,7 @@ impl Instances {
         ui.horizontal(|ui| {
             ui.heading(RichText::new("Instances").size(30.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Reload").clicked() {
+                if ui.button("Rescan").clicked() {
                     self.reload();
                 }
             });
